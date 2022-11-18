@@ -1,0 +1,18 @@
+name: pg8000
+version: 1.0.0
+description: >
+  A port from Python pg8000
+#homepage: https://github.com/insinfo/pg8000
+
+environment:
+  sdk: '>=2.10.0 <3.0.0'
+
+dependencies:
+  crypto: ">=2.0.0"
+  convert: ">=1.0.0"
+  charcode: ">=1.0.0"
+  rikulo_commons: ">=5.0.1"
+
+dev_dependencies:
+  test: any
+  yaml: any
