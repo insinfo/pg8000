@@ -1,8 +1,12 @@
 //Windows OU openbsd
 //https://github.com/tpn/winsdk-10/blob/master/Include/10.0.10240.0/um/WinSock2.h
 import 'dart:async';
+import 'dart:convert';
 //import 'dart:cli';
 import 'dart:io';
+
+import 'package:convert/convert.dart';
+import 'package:crypto/crypto.dart';
 
 const WINDOWS_SO_KEEPALIVE = 0x0008; //8 keep connections alive
 const WINDOWS_SOL_SOCKET = 0xffff; //65535 options for socket level
@@ -112,5 +116,39 @@ class Utils {
     }
 
     return result;
+  }
+
+  static int len(List list) {
+    return list.length;
+  }
+
+  ///[str] is converted to ascii bytes
+  /// return md5 hex String
+  static String md5HexStr(String str) {
+    var hexdigest = hex.encode(md5.convert(ascii.encode(str)).bytes);
+    return hexdigest;
+  }
+
+  ///[bytes] is ascii bytes
+  /// return ascii bytes of hex of md5
+  static List<int> md5HexBytesAscii(List<int> bytes) {
+    var hexdigest = hex.encode(md5.convert(bytes).bytes);
+    return ascii.encode(hexdigest);
+  }
+
+  static List<List<T>> splitList<T>(List<T> list, dynamic splitBy) {
+    var results = <List<T>>[];
+    var result = <T>[];
+    //var count = 0;
+    for (var item in list) {
+      if (item == splitBy) {
+        results.add(result);
+        result = [];
+      } else {
+        result.add(item);
+      }
+    }
+
+    return results;
   }
 }

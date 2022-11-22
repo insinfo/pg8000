@@ -16,17 +16,13 @@ class Buffer {
   int readByte() {
     if (_queue.isEmpty)
       throw Exception("Attempted to read from an empty buffer.");
-
     int byte = _queue.first[_position];
-
     _position++;
     if (_position >= _queue.first.length) {
       _queue.removeFirst();
       _position = 0;
     }
-
     _bytesRead++;
-
     return byte;
   }
 

@@ -85,3 +85,96 @@ class ArrayState {
   static const InValue = 3;
   static const Out = 4;
 }
+
+parse_array(data, adapter) {
+  var state = ArrayState.Out;
+  var stack = [[]];
+  var val = [];
+
+  for (var c in data) {
+    if (state == ArrayState.InValue) {
+      if (["}", ","].contains(c)) {
+        var value = val.join();
+        stack[0].add(value == "NULL" ? null : adapter(value));
+        state = ArrayState.Out;
+      } else {
+        val.add(c);
+      }
+    }
+    if (state == ArrayState.Out) {
+      if (c == "{") {
+        var a = [];
+        stack[0].add(a);
+        stack.add(a);
+      } else if (c == "}") {
+        stack.removeLast();
+      } else if (c == ",") {
+        //pass;
+      } else if (c == '"') {
+        val = [];
+        state = ArrayState.InString;
+      } else {
+        val = [c];
+        state = ArrayState.InValue;
+      }
+    } else if (state == ArrayState.InString) {
+      if (c == '"') {
+        stack[0].add(adapter(val.join()));
+        state = ArrayState.Out;
+      } else if (c == "\\")
+        state = ArrayState.InEscape;
+      else {
+        val.add(c);
+      }
+    } else if (state == ArrayState.InEscape) {
+      val.add(c);
+      state = ArrayState.InString;
+    }
+  }
+  return stack[0][0];
+}
+
+final PY_PG = {
+  DateTime: DATE,
+  num: NUMERIC,
+  // IPv4Address: INET,
+  // IPv6Address: INET,
+  // IPv4Network: INET,
+  // IPv6Network: INET,
+  // PGInterval: INTERVAL,
+  DateTime: TIME,
+  Duration: INTERVAL,
+  String: UUID_TYPE,
+  bool: BOOLEAN,
+  List: BYTES,
+  Map: JSONB,
+  double: FLOAT,
+  null: NULLTYPE,
+  List: BYTES,
+  String: TEXT,
+};
+
+final PY_TYPES = {
+  // DateTime: date_out,  // date
+  // DateTime: datetime_out,
+  // Decimal: numeric_out,  // numeric
+  // enum: enum_out,  // enum
+  // IPv4Address: inet_out,  // inet
+  // IPv6Address: inet_out,  // inet
+  // IPv4Network: inet_out,  // inet
+  // IPv6Network: inet_out,  // inet
+  // PGInterval: interval_out,  // interval
+  // Time: time_out,  // time
+  // Timedelta: interval_out,  // interval
+  // UUID: uuid_out,  // uuid
+  // bool: bool_out,  // bool
+  // bytearray: bytes_out,  // bytea
+  // dict: json_out,  // jsonb
+  // float: float_out,  // float8
+  // type(None): null_out,  // null
+  // bytes: bytes_out,  // bytea
+  // str: string_out,  // unknown
+  // int: int_out,
+  // list: array_out,
+  // tuple: array_out,
+};

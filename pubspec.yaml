@@ -8,10 +8,10 @@ environment:
   sdk: '>=2.10.0 <3.0.0'
 
 dependencies:
-  crypto: ">=2.0.0"
-  convert: ">=1.0.0"
-  charcode: ">=1.0.0"
-  rikulo_commons: ">=5.0.1"
+  crypto: any #">=2.0.0"
+  convert: any #">=1.0.0"
+  charcode: any #">=1.0.0"
+  rikulo_commons: any #">=5.0.1"
 
 dev_dependencies:
   test: any
