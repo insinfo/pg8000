@@ -136,6 +136,8 @@ class Utils {
     return ascii.encode(hexdigest);
   }
 
+  ///https://github.com/dart-lang/sdk/issues/29837
+  /// split list by
   static List<List<T>> splitList<T>(List<T> list, dynamic splitBy) {
     var results = <List<T>>[];
     var result = <T>[];

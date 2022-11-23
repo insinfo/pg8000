@@ -5,6 +5,8 @@ import 'package:pg8000/src/converters.dart';
 import 'package:pg8000/src/core.dart';
 import 'package:pg8000/src/utils/utils.dart';
 
+import 'dart:typed_data';
+
 void main(List<String> args) async {
   // print('A'.codeUnits);
   // print(pack('i', [4]));
@@ -19,9 +21,10 @@ void main(List<String> args) async {
 
   await com.connect();
 
-  await com.execute_simple('select * from crud_teste.cursos limit 1');
+  await com.execute_simple('select * from crud_teste.cursos limit 2');
 
-  //print(Utils.splitList([12, 24, 0, 50, 47, 0], NULL_BYTE));
-
+  // var bytes = [12, 24, 0, 50, 47, 0];
+  // print(Utils.splitList(bytes, NULL_BYTE));
+  //Result [[12, 24], [50, 47]]
   //exit(0);
 }

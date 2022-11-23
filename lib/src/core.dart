@@ -7,6 +7,7 @@ import 'dart:io';
 
 import 'package:pg8000/src/utils/utils.dart';
 
+import 'converters.dart';
 import 'utils/buffer.dart';
 import 'connection_state.dart';
 
@@ -308,6 +309,8 @@ class CoreConnection {
 
   int _backendPid;
 
+  bool _hasConnected = false;
+
   CoreConnection(
     this.user, {
     this.host = "localhost",
@@ -442,7 +445,7 @@ class CoreConnection {
   }
 
   void _sendStartupMessage() async {
-    print('CoreConnection@_sendStartupMessage');
+    //print('CoreConnection@_sendStartupMessage');
     // Int32 - Message length, including self.
     // Int32(196608) - Protocol version number.  Version 3.0.
     // Any number of key/value pairs, terminated by a zero byte:
@@ -493,26 +496,31 @@ class CoreConnection {
       //print('READY_FOR_QUERY, ERROR_RESPONSE');
       switch (msgType) {
         case NOTICE_RESPONSE:
-          print('NOTICE_RESPONSE');
+          //print('NOTICE_RESPONSE');
           break;
         case AUTHENTICATION_REQUEST:
-          await handle_AUTHENTICATION_REQUEST(messageBytes, context);
+          await handle_AUTHENTICATION_REQUEST(messageBytes);
           break;
         case PARAMETER_STATUS:
-          handle_PARAMETER_STATUS(messageBytes, context);
+          handle_PARAMETER_STATUS(messageBytes);
           break;
         case BACKEND_KEY_DATA:
-          handle_BACKEND_KEY_DATA(messageBytes, context);
+          handle_BACKEND_KEY_DATA(messageBytes);
           break;
         case READY_FOR_QUERY:
-          handle_READY_FOR_QUERY(messageBytes, context);
+          handle_READY_FOR_QUERY(messageBytes);
           break;
-
         case ERROR_RESPONSE:
           handle_ERROR_RESPONSE(messageBytes, context);
           break;
         case ROW_DESCRIPTION:
           handle_ROW_DESCRIPTION(messageBytes, context);
+          break;
+        case DATA_ROW:
+          handle_DATA_ROW(messageBytes, context);
+          break;
+        case COMMAND_COMPLETE:
+          handle_COMMAND_COMPLETE(messageBytes, context);
           break;
       }
       //[READY_FOR_QUERY, ERROR_RESPONSE].contains(code)
@@ -532,31 +540,31 @@ class CoreConnection {
     context.error = Exception(msg);
   }
 
-  void handle_BACKEND_KEY_DATA(List<int> data, Context context) {
+  void handle_BACKEND_KEY_DATA(List<int> data) {
     this._backend_key_data = data;
     _backendPid = i_unpack(data).first;
-    print('handle_BACKEND_KEY_DATA _backendPid ${_backendPid}');
+    //print('handle_BACKEND_KEY_DATA _backendPid ${_backendPid}');
   }
 
-  void handle_READY_FOR_QUERY(List<int> data, Context context) {
-    print('handle_READY_FOR_QUERY ${data}');
+  void handle_READY_FOR_QUERY(List<int> data) {
+    //print('handle_READY_FOR_QUERY ${data}');
     this._transaction_status = data;
     var was = state;
     state = ConnectionState.idle;
 
     if (was == ConnectionState.authenticated) {
-      //_hasConnected = true;
+      _hasConnected = true;
       _connected.complete(this);
     }
   }
 
   void handle_ROW_DESCRIPTION(List<int> data, Context context) {
-    print('handle_ROW_DESCRIPTION ');
+    //print('handle_ROW_DESCRIPTION ');
     state = ConnectionState.streaming;
     var count = h_unpack(data)[0];
     var idx = 2;
     List<Map<String, dynamic>> columns = [];
-    var input_funcs = [];
+    var input_funcs = <Function>[];
 
     for (var i = 0; i < count; i++) {
       var name = data.sublist(idx, data.indexOf(NULL_BYTE, idx));
@@ -572,10 +580,40 @@ class CoreConnection {
       field['name'] = utf8.decode(name);
       idx += 18;
       columns.add(field);
+      //mapeias a funções de conversão de tipo para estas colunas
+      input_funcs.add(PG_TYPES[field["type_oid"]]);
     }
     context.columns = columns;
-    print(columns);
+    context.input_funcs = input_funcs;
+    if (context.rowsIsNull) {
+      context.initRows();
+    }
   }
+
+  /// obtem as linhas de resultado do postgresql
+  void handle_DATA_ROW(List<int> data, Context context) {
+    print('handle_DATA_ROW');
+    var idx = 2;
+    var row = [];
+    var v;
+    for (var func in context.input_funcs) {
+      var vlen = i_unpack(data, idx)[0];
+      idx += 4;
+      if (vlen == -1) {
+        v = null;
+      } else {
+        var bytes = data.sublist(idx, idx + vlen);
+        var stringVal = utf8.decode(bytes);
+        v = func(stringVal);
+        idx += vlen;
+        //print('handle_DATA_ROW $stringVal | $v | ${v.runtimeType}');
+      }
+      row.add(v);
+    }
+    context.addRow(row);
+  }
+
+  void handle_COMMAND_COMPLETE(List<int> data, Context context) {}
 
   Future<Context> execute_simple(statement) async {
     var context = Context(statement);
@@ -596,13 +634,12 @@ class CoreConnection {
     //this.notices.add({s[0:1]: s[1:] for s in data.split(NULL_BYTE)});
   }
 
-  Future<void> handle_AUTHENTICATION_REQUEST(
-      List<int> data, Context context) async {
+  Future<void> handle_AUTHENTICATION_REQUEST(List<int> data) async {
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
-    print('handle_AUTHENTICATION_REQUEST');
+    //print('handle_AUTHENTICATION_REQUEST');
 
     var auth_code = i_unpack(data)[0];
-    print('auth_code: $auth_code');
+    //print('auth_code: $auth_code');
     if (auth_code == 0) {
       state = ConnectionState.authenticated;
       return;
@@ -675,7 +712,7 @@ class CoreConnection {
   }
 
   /// obtem as informações do servidor
-  void handle_PARAMETER_STATUS(List<int> data, Context context) {
+  void handle_PARAMETER_STATUS(List<int> data) {
     //print('handle_PARAMETER_STATUS');
     var pos = data.indexOf(NULL_BYTE);
     var key = ascii.decode(data.sublist(0, pos));
@@ -709,20 +746,45 @@ class CoreConnection {
 
 class Context {
   dynamic statement;
-  dynamic stream;
-  dynamic input_funcs;
-  dynamic rows;
-  dynamic row_count;
+  //dynamic stream;
+
+  /// funções de conversão de tipo para as colunas
+  List<Function> input_funcs;
+  List<List> _rows;
+  int row_count;
+
+  /// informações das colunas
   List<Map<String, dynamic>> columns;
   dynamic error;
 
+  final StreamController<dynamic> _controller = StreamController<dynamic>();
+  Stream<dynamic> get stream => _controller.stream;
+
   Context(this.statement,
       [dynamic stream = null, columns = null, input_funcs = null]) {
-    this.rows = columns == null ? null : [];
+    //
+    //_rows = columns == null ? null : [];
+    if (columns != null) {
+      initRows();
+    }
     row_count = -1;
     columns = columns;
     stream = stream;
     input_funcs = input_funcs == null ? [] : input_funcs;
     error = null;
+  }
+
+  void addRow(List row) {
+    row_count++;
+    _rows.add(row);
+    _controller.add(0);
+  }
+
+  void initRows() {
+    _rows = [];
+  }
+
+  bool get rowsIsNull {
+    return _rows == null;
   }
 }
