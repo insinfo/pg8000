@@ -8,8 +8,11 @@ import 'dart:io';
 import 'package:pg8000/src/utils/utils.dart';
 
 import 'converters.dart';
+import 'exceptions.dart';
 import 'utils/buffer.dart';
 import 'connection_state.dart';
+
+import 'transaction_state.dart';
 
 /// conversão Python to Dart
 ///        type Python          |  type dart
@@ -113,6 +116,16 @@ List<int> unpack(String fmt, List<int> bytes, [int offset = 0]) {
   return decodedNum;
 }
 
+/// write char 1 byte
+List<int> c_pack(int val) {
+  return pack('c', [val]);
+}
+
+/// readByte
+List<int> c_unpack(List<int> bytes, [int offset = 0]) {
+  return unpack('c', bytes, offset);
+}
+
 /// pega valores não-byte (por exemplo, inteiros)
 /// e os converte em bytes usando o formato "i" int de 4 bytes
 List<int> i_pack(int val) {
@@ -198,6 +211,78 @@ const int COPY_IN_RESPONSE = 71; // b"G"
 const int COPY_OUT_RESPONSE = 72; // b"H"
 const int EMPTY_QUERY_RESPONSE = 73; // b"I"
 
+String pgCodeString(int pgCode) {
+  switch (pgCode) {
+    case NOTICE_RESPONSE:
+      return 'NOTICE_RESPONSE';
+      break;
+    case AUTHENTICATION_REQUEST:
+      return 'AUTHENTICATION_REQUEST';
+      break;
+    case NOTICE_RESPONSE:
+      return 'NOTICE_RESPONSE';
+      break;
+    case PARAMETER_STATUS:
+      return 'PARAMETER_STATUS';
+      break;
+    case BACKEND_KEY_DATA:
+      return 'BACKEND_KEY_DATA';
+      break;
+    case READY_FOR_QUERY:
+      return 'READY_FOR_QUERY';
+      break;
+    case ROW_DESCRIPTION:
+      return 'ROW_DESCRIPTION';
+      break;
+    case ERROR_RESPONSE:
+      return 'ERROR_RESPONSE';
+      break;
+    case DATA_ROW:
+      return 'DATA_ROW';
+      break;
+    case COMMAND_COMPLETE:
+      return 'COMMAND_COMPLETE';
+      break;
+    case PARSE_COMPLETE:
+      return 'PARSE_COMPLETE';
+      break;
+    case BIND_COMPLETE:
+      return 'BIND_COMPLETE';
+      break;
+    case CLOSE_COMPLETE:
+      return 'CLOSE_COMPLETE';
+      break;
+    case PORTAL_SUSPENDED:
+      return 'PORTAL_SUSPENDED';
+      break;
+    case NO_DATA:
+      return 'NO_DATA';
+      break;
+    case PARAMETER_DESCRIPTION:
+      return 'PARAMETER_DESCRIPTION';
+      break;
+    case NOTIFICATION_RESPONSE:
+      return 'NOTIFICATION_RESPONSE';
+      break;
+    case COPY_DONE:
+      return 'COPY_DONE';
+      break;
+    case COPY_DATA:
+      return 'COPY_DATA';
+      break;
+    case COPY_IN_RESPONSE:
+      return 'COPY_IN_RESPONSE';
+      break;
+    case COPY_OUT_RESPONSE:
+      return 'COPY_OUT_RESPONSE';
+      break;
+    case EMPTY_QUERY_RESPONSE:
+      return 'EMPTY_QUERY_RESPONSE';
+      break;
+  }
+  return 'unknow';
+}
+
 const int BIND = 66; //b"B"
 const int PARSE = 80; // b"P"
 const int QUERY = 81; // b"Q"
@@ -256,6 +341,9 @@ class CoreConnection {
   String application_name;
   dynamic replication;
 
+  /// The owner of the connection, or null if not available.
+  ConnectionOwner owner;
+
   final _connected = Completer<CoreConnection>();
 
   bool autocommit = false;
@@ -288,28 +376,29 @@ class CoreConnection {
 
   dynamic channel_binding;
 
-  Future<dynamic> Function() _flush;
-
-  void Function(List<int> d) _write;
+  //Future<dynamic> Function() _flush;
+  //void Function(List<int> d) _write;
 
   ///  Int32(196608) - Protocol version number.  Version 3.0.
   int protocol = 196608;
 
   Map<String, dynamic> init_params = <String, dynamic>{};
 
-  List<int> _backend_key_data;
-
-  Map<dynamic, dynamic> message_types = <dynamic, dynamic>{};
-
   List<int> _transaction_status;
 
   ConnectionState state = ConnectionState.notConnected;
 
+  TransactionState transactionState = TransactionState.unknown;
+
   Buffer _buffer;
 
-  int _backendPid;
+  int backendPid = 0;
+  List<int> _backend_key_data;
 
-  bool _hasConnected = false;
+  bool hasConnected = false;
+  // fila de querys a serem executadas
+  final Queue<Query> _sendQueryQueue = Queue<Query>();
+  Query _query;
 
   CoreConnection(
     this.user, {
@@ -330,7 +419,8 @@ class CoreConnection {
 
   void init() {
     if (user == null) {
-      throw Exception("The 'user' connection parameter cannot be None");
+      throw PostgresqlException(
+          "The 'user' connection parameter cannot be null");
     }
 
     init_params = <String, dynamic>{
@@ -365,23 +455,8 @@ class CoreConnection {
     this._statement_nums = Set();
     this._caches = {};
 
-    this._flush = _sock_flush;
-    this._write = _sock_write;
-
-    message_types = {
-      NOTICE_RESPONSE: this.handle_NOTICE_RESPONSE,
-      AUTHENTICATION_REQUEST: this.handle_AUTHENTICATION_REQUEST,
-    };
-  }
-
-  void _send_message(int code, List<int> data) {
-    try {
-      this._write([code]);
-      this._write(i_pack(Utils.len(data) + 4));
-      this._write(data);
-    } catch (e) {
-      throw Exception("_send_message connection is closed $e");
-    }
+    //this._flush = _sock_flush;
+    //this._write = _sock_write;
   }
 
   Future<CoreConnection> connect() async {
@@ -406,14 +481,14 @@ class CoreConnection {
         state = ConnectionState.socketConnected;
       } catch (e) {
         print('CoreConnection $e');
-        throw Exception(
+        throw PostgresqlException(
             """Can't create a connection to host $host and port $port 
                     (timeout is $timeout and source_address is $source_address).""");
       }
     } else if (unix_sock != null) {
       throw UnimplementedError('unix_sock not implemented');
     } else {
-      throw Exception("one of host or unix_sock must be provided");
+      throw PostgresqlException("one of host or unix_sock must be provided");
     }
 
     if (ssl_context != null) {
@@ -431,7 +506,7 @@ class CoreConnection {
     try {
       return this._usock.flush();
     } catch (e) {
-      throw Exception("_sock_flush network error");
+      throw PostgresqlException("_sock_flush network error $e");
     }
   }
 
@@ -444,7 +519,7 @@ class CoreConnection {
     }
   }
 
-  void _sendStartupMessage() async {
+  Future<void> _sendStartupMessage() async {
     //print('CoreConnection@_sendStartupMessage');
     // Int32 - Message length, including self.
     // Int32(196608) - Protocol version number.  Version 3.0.
@@ -464,9 +539,9 @@ class CoreConnection {
     }
     val.add(0);
     //print(utf8.decode(val));
-    this._write(i_pack(Utils.len(val) + 4));
-    this._write(val);
-    await this._flush();
+    this._sock_write(i_pack(Utils.len(val) + 4));
+    this._sock_write(val);
+    await _sock_flush();
     state = ConnectionState.authenticating;
   }
 
@@ -476,13 +551,9 @@ class CoreConnection {
     if (state == ConnectionState.closed) {
       return;
     }
-
     _buffer.append(socketData);
-
     //print('_readData: $socketData');
     //print('_readData: ${utf8.decode(socketData, allowMalformed: true)}');
-
-    var context = Context(null);
 
     while (state != ConnectionState.closed) {
       if (_buffer.bytesAvailable < 5) return; // Wait for more data.
@@ -490,13 +561,12 @@ class CoreConnection {
       int msgType = _buffer.readByte();
       int length = _buffer.readInt32() - 4;
 
-      print('_readData code: $msgType');
+      print('_readData code: ${pgCodeString(msgType)} $msgType');
       var messageBytes = _buffer.readBytes(length);
 
-      //print('READY_FOR_QUERY, ERROR_RESPONSE');
       switch (msgType) {
         case NOTICE_RESPONSE:
-          //print('NOTICE_RESPONSE');
+          handle_NOTICE_RESPONSE(messageBytes);
           break;
         case AUTHENTICATION_REQUEST:
           await handle_AUTHENTICATION_REQUEST(messageBytes);
@@ -511,59 +581,106 @@ class CoreConnection {
           handle_READY_FOR_QUERY(messageBytes);
           break;
         case ERROR_RESPONSE:
-          handle_ERROR_RESPONSE(messageBytes, context);
+          handle_ERROR_RESPONSE(messageBytes);
           break;
         case ROW_DESCRIPTION:
-          handle_ROW_DESCRIPTION(messageBytes, context);
+          handle_ROW_DESCRIPTION(messageBytes);
           break;
         case DATA_ROW:
-          handle_DATA_ROW(messageBytes, context);
+          handle_DATA_ROW(messageBytes);
           break;
         case COMMAND_COMPLETE:
-          handle_COMMAND_COMPLETE(messageBytes, context);
+          handle_COMMAND_COMPLETE(messageBytes);
+          break;
+        case PARSE_COMPLETE:
+          handle_PARSE_COMPLETE(messageBytes);
+          break;
+        case BIND_COMPLETE:
+          handle_BIND_COMPLETE(messageBytes);
+          break;
+        case PARAMETER_DESCRIPTION:
+          handle_PARAMETER_DESCRIPTION(messageBytes);
           break;
       }
-      //[READY_FOR_QUERY, ERROR_RESPONSE].contains(code)
     }
   }
 
-  void handle_ERROR_RESPONSE(List<int> data, Context context) {
-    var tempList = Utils.splitList<int>(data, NULL_BYTE);
+  void handle_PARSE_COMPLETE(List<int> data) {
+    // Byte1('1') - Identifier.
+    //Int32(4) - Message length, including self.
+    print('handle_PARSE_COMPLETE ${utf8.decode(data, allowMalformed: true)}');
+  }
 
-    var msg = {};
-    for (var bytes in tempList) {
-      if (bytes.isNotEmpty) {
-        msg[ascii.decode(bytes.sublist(0, 1))] = utf8.decode(bytes.sublist(1));
-      }
-    }
-    print('handle_ERROR_RESPONSE $msg');
-    context.error = Exception(msg);
+  void handle_BIND_COMPLETE(List<int> data) {
+    print('handle_BIND_COMPLETE ${utf8.decode(data, allowMalformed: true)}');
+    //informa que terminaou a execução dos passos de uma prepared query
+    _query.isPreparedComplete = true;
+  }
+
+  void handle_PARAMETER_DESCRIPTION(List<int> data) {
+    //https://www.postgresql.org/docs/current/protocol-message-formats.html
+    print(
+        'handle_PARAMETER_DESCRIPTION ${utf8.decode(data, allowMalformed: true)}');
+    // count = h_unpack(data)[0]
+    //context.parameter_oids = unpack_from("!" + "i" * count, data, 2)
   }
 
   void handle_BACKEND_KEY_DATA(List<int> data) {
     this._backend_key_data = data;
-    _backendPid = i_unpack(data).first;
+    backendPid = i_unpack(data).first;
     //print('handle_BACKEND_KEY_DATA _backendPid ${_backendPid}');
   }
 
   void handle_READY_FOR_QUERY(List<int> data) {
     //print('handle_READY_FOR_QUERY ${data}');
     this._transaction_status = data;
-    var was = state;
-    state = ConnectionState.idle;
+    int c = c_unpack(data)[0];
 
-    if (was == ConnectionState.authenticated) {
-      _hasConnected = true;
-      _connected.complete(this);
+// const int IDLE = 73; //b"I"
+// const int IN_TRANSACTION = 84; //b"T"
+// const int IN_FAILED_TRANSACTION = 69; // b"E"
+
+    if (c == IDLE || c == IN_TRANSACTION || c == IN_FAILED_TRANSACTION) {
+      if (c == IDLE) {
+        transactionState = TransactionState.none;
+      } else if (c == IN_TRANSACTION) {
+        transactionState = TransactionState.begun;
+      } else if (c == IN_FAILED_TRANSACTION) {
+        transactionState = TransactionState.error;
+      }
+
+      var was = state;
+      state = ConnectionState.idle;
+      if (_query?.isPrepared == false && _query?.isPreparedComplete == true) {
+        print('handle_READY_FOR_QUERY _query = null;');
+        _query?.close();
+        _query = null;
+      }
+
+      if (was == ConnectionState.authenticated) {
+        hasConnected = true;
+        _connected.complete(this);
+      }
+
+      Timer.run(_processSendQueryQueue);
+    } else {
+      _destroy();
+      throw PostgresqlException(
+        'Unknown ReadyForQuery transaction status: ${Utils.itoa(c)}.',
+      );
     }
   }
 
-  void handle_ROW_DESCRIPTION(List<int> data, Context context) {
+  void handle_ROW_DESCRIPTION(List<int> data) {
     //print('handle_ROW_DESCRIPTION ');
     state = ConnectionState.streaming;
     var count = h_unpack(data)[0];
     var idx = 2;
+
+    /// informações das colunas
     List<Map<String, dynamic>> columns = [];
+
+    /// funções de converção de tipos
     var input_funcs = <Function>[];
 
     for (var i = 0; i < count; i++) {
@@ -583,20 +700,25 @@ class CoreConnection {
       //mapeias a funções de conversão de tipo para estas colunas
       input_funcs.add(PG_TYPES[field["type_oid"]]);
     }
-    context.columns = columns;
-    context.input_funcs = input_funcs;
-    if (context.rowsIsNull) {
-      context.initRows();
-    }
+
+    final query = _query;
+    query.columnCount = count;
+    query.columns = columns; // UnmodifiableListView(list);
+    query.commandIndex++;
+
+    query.input_funcs = input_funcs;
   }
 
   /// obtem as linhas de resultado do postgresql
-  void handle_DATA_ROW(List<int> data, Context context) {
+  void handle_DATA_ROW(List<int> data) {
     print('handle_DATA_ROW');
+
+    final query = _query;
+
     var idx = 2;
     var row = [];
     var v;
-    for (var func in context.input_funcs) {
+    for (var func in query.input_funcs) {
       var vlen = i_unpack(data, idx)[0];
       idx += 4;
       if (vlen == -1) {
@@ -610,33 +732,185 @@ class CoreConnection {
       }
       row.add(v);
     }
-    context.addRow(row);
+    query.addRow(row);
   }
 
-  void handle_COMMAND_COMPLETE(List<int> data, Context context) {}
+  void handle_COMMAND_COMPLETE(List<int> data) {
+    var commandString = utf8.decode(data.sublist(0, data.length - 1));
+    var values = commandString.split(' ');
+    int rowsAffected = int.tryParse(values.last) ?? 0;
 
-  Future<Context> execute_simple(statement) async {
-    var context = Context(statement);
-    print('execute_simple $statement');
-    this.send_QUERY(statement);
-    await this._flush();
-    //this.handle_messages(context);
+    print("handle_COMMAND_COMPLETE $rowsAffected");
 
-    return context;
+    final query = _query;
+    query.commandIndex++;
+    query.rowsAffected = rowsAffected;
   }
 
-  dynamic send_QUERY(String sql) {
-    this._send_message(QUERY, [...utf8.encode(sql), NULL_BYTE]);
+  Query _enqueueQuery(String sql, [List params, List oids]) {
+    print('_enqueueQuery params $params');
+
+    if (sql == '') {
+      throw PostgresqlException('SQL query is null or empty.');
+    }
+
+    if (sql.contains('\u0000')) {
+      throw PostgresqlException('Sql query contains a null character.');
+    }
+
+    if (state == ConnectionState.closed) {
+      throw PostgresqlException(
+        'Connection is closed, cannot execute query.',
+      );
+    }
+
+    var query = Query(sql);
+    query.addPreparedParams(params, oids);
+    _sendQueryQueue.addLast(query);
+
+    Timer.run(_processSendQueryQueue);
+    return query;
   }
 
-  void handle_NOTICE_RESPONSE(List<int> data, Context context) {
+  void _processSendQueryQueue() async {
+    if (_sendQueryQueue.isEmpty) return;
+    if (_query != null) return;
+    if (state == ConnectionState.closed) return;
+    assert(state == ConnectionState.idle);
+    final query = _query = _sendQueryQueue.removeFirst();
+    //if vals
+    print('_processSendQueryQueue');
+
+    if (!query.isPrepared) {
+      // execute_simple
+      print('execute_simple ');
+      this._send_message(QUERY, [...utf8.encode(query.sql), NULL_BYTE]);
+    } else {
+      // execute_unnamed
+      print('execute_unnamed');
+      this.send_PARSE(NULL_BYTE, query.sql, query.oids);
+      this._sock_write(SYNC_MSG);
+      await this._sock_flush();
+      // self.handle_messages(context);
+      this.send_DESCRIBE_STATEMENT(NULL_BYTE);
+      this._sock_write(SYNC_MSG);
+
+      await this._sock_flush();
+
+      var params = make_params(PY_TYPES, query.preparedParams);
+      query.isPreparedComplete = false;
+      this.send_BIND(NULL_BYTE, params);
+      // this.handle_messages(context)
+      this.send_EXECUTE();
+
+      this._sock_write(SYNC_MSG);
+      await this._sock_flush();
+      // this.handle_messages(context)
+    }
+    state = ConnectionState.busy;
+    query.state = _BUSY;
+    transactionState = TransactionState.unknown;
+  }
+
+  /// execute a simple query whitout prepared statement
+  Stream<dynamic> execute_simple(String statement) {
+    try {
+      //if (values != null) sql = substitute(sql, values, _typeConverter.encode);
+      var query = _enqueueQuery(statement);
+      return query.stream;
+    } catch (ex, st) {
+      return Stream.fromFuture(Future.error(ex, st));
+    }
+  }
+
+  /// execute a prepared statement
+  Stream<dynamic> execute_unnamed(statement, List params,
+      [List oids = const []]) {
+    try {
+      var query = _enqueueQuery(statement, params, oids);
+      return query.stream;
+    } catch (ex, st) {
+      return Stream.fromFuture(Future.error(ex, st));
+    }
+  }
+
+  /// [statement_name_bin] byte int
+  void send_PARSE(statement_name_bin, String statement, List oids) {
+    var val = <int>[statement_name_bin];
+    val.addAll([...utf8.encode(statement), NULL_BYTE]);
+    val.addAll(h_pack(Utils.len(oids)));
+    for (var oid in oids) {
+      val.addAll(i_pack(oid == -1 ? 0 : oid));
+    }
+    print("send_PARSE val: ${utf8.decode(val)}");
+    this._send_message(PARSE, val);
+    this._sock_write(FLUSH_MSG);
+  }
+
+  void send_DESCRIBE_STATEMENT(statement_name_bin) {
+    this._send_message(DESCRIBE, [STATEMENT, statement_name_bin]);
+    this._sock_write(FLUSH_MSG);
+  }
+
+  /// envia a mensagem BIND
+  void send_BIND(statement_name_bin, List params) {
+    //https://www.postgresql.org/docs/current/protocol-message-formats.html
+
+    var retval = <int>[
+      NULL_BYTE,
+      statement_name_bin,
+      ...h_pack(0),
+      ...h_pack(Utils.len(params))
+    ];
+
+    for (var value in params) {
+      if (value == null) {
+        retval.addAll(i_pack(-1));
+      } else {
+        var val = utf8.encode(value);
+        retval.addAll(i_pack(Utils.len(val)));
+        retval.addAll(val);
+      }
+    }
+    retval.addAll(h_pack(0));
+    _send_message(BIND, retval);
+    _sock_write(FLUSH_MSG);
+  }
+
+  /// envia a mensagem EXECUTE_MSG
+  void send_EXECUTE() {
+    //https://www.postgresql.org/docs/current/protocol-message-formats.html
+    this._sock_write(EXECUTE_MSG);
+    this._sock_write(FLUSH_MSG);
+  }
+
+  /// envia mensagem para o postgreSql
+  /// ou seja grava uma mensgame no Socket
+  void _send_message(int code, List<int> bytes) {
+    try {
+      this._sock_write([code]);
+      this._sock_write(i_pack(Utils.len(bytes) + 4));
+      this._sock_write(bytes);
+    } catch (e) {
+      throw PostgresqlException("_send_message connection is closed $e");
+    }
+  }
+
+  void handle_NOTICE_RESPONSE(List<int> data) {
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
     //this.notices.add({s[0:1]: s[1:] for s in data.split(NULL_BYTE)});
+    print('handle_NOTICE_RESPONSE');
   }
 
   Future<void> handle_AUTHENTICATION_REQUEST(List<int> data) async {
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
     //print('handle_AUTHENTICATION_REQUEST');
+
+    if (state != ConnectionState.authenticating) {
+      throw PostgresqlException(
+        'Invalid connection state while authenticating.',
+      );
+    }
 
     var auth_code = i_unpack(data)[0];
     //print('auth_code: $auth_code');
@@ -645,16 +919,14 @@ class CoreConnection {
       return;
     } else if (auth_code == 3) {
       if (this.password == null)
-        throw Exception(
-            "server requesting password authentication, but no password was " +
-                "provided");
+        throw PostgresqlException(
+            "server requesting password authentication, but no password was provided");
       this._send_message(PASSWORD, [...this.passwordBytes, NULL_BYTE]);
-      await this._flush();
+      await this._sock_flush();
     } else if (auth_code == 5) {
       if (this.password == null) {
-        throw Exception(
-            "server requesting MD5 password authentication, but no password "
-            "was provided");
+        throw PostgresqlException(
+            "server requesting MD5 password authentication, but no password  was provided");
       }
       // var passAndUserMd5 = ascii
       //     .encode(hex.encode(md5.convert([...passwordBytes, ...user]).bytes));
@@ -673,7 +945,7 @@ class CoreConnection {
       ];
 
       this._send_message(PASSWORD, [...pwd, NULL_BYTE]);
-      await this._flush();
+      await this._sock_flush();
     } else if (auth_code == 10) {
       // AuthenticationSASL
       //var mechanisms = [m.decode("ascii") for m in data[4:-2].split(NULL_BYTE)];
@@ -703,10 +975,10 @@ class CoreConnection {
       // AuthenticationSASLFinal
       //this.auth.set_server_final(data[4:].decode("utf8"))
     } else if ([2, 4, 6, 7, 8, 9].contains(auth_code))
-      throw Exception(
+      throw PostgresqlException(
           "Authentication method $auth_code not supported by pg8000.");
     else {
-      throw Exception(
+      throw PostgresqlException(
           "Authentication method $auth_code not recognized by pg8000.");
     }
   }
@@ -728,30 +1000,158 @@ class CoreConnection {
     }
   }
 
-  List<int> _sock_read(List<int> socketData, int size, [int offset = 0]) {
-    if (offset != 0) {
-      return socketData.sublist(offset).sublist(0, size);
-    }
-    return socketData.sublist(0, size);
-  }
+  // List<int> _sock_read(List<int> socketData, int size, [int offset = 0]) {
+  //   if (offset != 0) {
+  //     return socketData.sublist(offset).sublist(0, size);
+  //   }
+  //   return socketData.sublist(0, size);
+  // }
 
   void _handleSocketError(dynamic error, {bool closed = false}) {
     print('_handleSocketError $error');
+
+    if (state == ConnectionState.closed) {
+      // _messages.add(new ClientMessageImpl(
+      //     isError: false,
+      //     severity: 'WARNING',
+      //     message: 'Socket error after socket closed.',
+      //     connectionName: _debugName,
+      //     exception: error));
+      _destroy();
+      return;
+    }
+    _destroy();
+    var msg = closed ? 'Socket closed unexpectedly.' : 'Socket error.';
+
+    if (!hasConnected) {
+      _connected.completeError(new PostgresqlException(msg, exception: error));
+    } else {
+      final query = _query;
+      if (query != null) {
+        query.addError(PostgresqlException(msg, exception: error));
+      } else {
+        // _messages.add(new ClientMessage(
+        //     isError: true,
+        //     connectionName: debugName,
+        //     severity: 'ERROR',
+        //     message: msg,
+        //     exception: error));
+      }
+    }
   }
 
   void _handleSocketClosed() {
     print('_handleSocketClosed');
+    if (state != ConnectionState.closed) {
+      _handleSocketError(null, closed: true);
+    }
+  }
+
+  void handle_ERROR_RESPONSE(List<int> data) {
+    var tempList = Utils.splitList<int>(data, NULL_BYTE);
+
+    var msg = {};
+    for (var bytes in tempList) {
+      if (bytes.isNotEmpty) {
+        msg[ascii.decode(bytes.sublist(0, 1))] = utf8.decode(bytes.sublist(1));
+      }
+    }
+    var ex = PostgresqlException(msg['message'],
+        serverMessage: msg, exception: msg['code']);
+
+    print('handle_ERROR_RESPONSE $msg');
+
+    if (!hasConnected) {
+      state = ConnectionState.closed;
+      this._usock.destroy();
+      _connected.completeError(ex);
+    } else {
+      final query = _query;
+      if (query != null) {
+        query.addError(ex);
+      } else {
+        // _messages.add(msg);
+      }
+
+      if (msg['code']?.startsWith('57P') ?? false) {
+        //PG stop/restart
+        final ow = owner;
+        if (ow != null)
+          ow.destroy();
+        else {
+          state = ConnectionState.closed;
+          _usock.destroy();
+        }
+      }
+    }
+  }
+
+  void close() {
+    if (state == ConnectionState.closed) return;
+
+    state = ConnectionState.closed;
+
+    // If a query is in progress then send an error and close the result stream.
+    final query = _query;
+    if (query != null) {
+      var c = query._controller;
+      if (!c.isClosed) {
+        c.addError(PostgresqlException(
+          'Connection closed before query could complete',
+        ));
+        c.close();
+        _query = null;
+      }
+    }
+  }
+
+  void _destroy() {
+    state = ConnectionState.closed;
+    this._usock.destroy();
+    // Timer.run(_messages.close);
   }
 }
 
-class Context {
-  dynamic statement;
+const int _QUEUED = 1;
+const int _BUSY = 6;
+//const int _STREAMING = 7;
+const int _DONE = 8;
+
+class Query {
+  //statement
+  final String sql;
+
   //dynamic stream;
+  int state = _QUEUED;
+  int commandIndex = 0;
+  int rowsAffected = 0;
+
+  /// params for prepared querys
+  List _params;
+
+  /// oids for prepared querys
+  List _oids;
+
+  /// se ouver params é uma Prepared query
+  bool get isPrepared => _params != null || _params?.isEmpty == true;
+
+  /// informa que terminaou a execução dos passos de uma prepared query
+  bool isPreparedComplete = false;
+
+  void addPreparedParams(List params, [List oids]) {
+    _params = params;
+    _oids = oids;
+    isPreparedComplete = false;
+  }
+
+  List get preparedParams => _params;
+  List get oids => _oids;
 
   /// funções de conversão de tipo para as colunas
-  List<Function> input_funcs;
-  List<List> _rows;
+  List<Function> input_funcs = [];
+  //List<List> _rows;
   int row_count;
+  int columnCount;
 
   /// informações das colunas
   List<Map<String, dynamic>> columns;
@@ -760,13 +1160,12 @@ class Context {
   final StreamController<dynamic> _controller = StreamController<dynamic>();
   Stream<dynamic> get stream => _controller.stream;
 
-  Context(this.statement,
-      [dynamic stream = null, columns = null, input_funcs = null]) {
+  Query(this.sql, [dynamic stream = null, columns = null, input_funcs = null]) {
     //
     //_rows = columns == null ? null : [];
-    if (columns != null) {
-      initRows();
-    }
+    // if (columns != null) {
+    //   initRows();
+    // }
     row_count = -1;
     columns = columns;
     stream = stream;
@@ -776,15 +1175,25 @@ class Context {
 
   void addRow(List row) {
     row_count++;
-    _rows.add(row);
-    _controller.add(0);
+    //_rows.add(row);
+    _controller.add(row);
   }
 
-  void initRows() {
-    _rows = [];
+  void close() {
+    _controller.close();
+    state = _DONE;
   }
 
-  bool get rowsIsNull {
-    return _rows == null;
+  void addError(Object err) {
+    _controller.addError(err);
+    // stream will be closed once the ready for query message is received.
   }
+}
+
+///A owner of [Connection].
+abstract class ConnectionOwner {
+  /// Destroys the connection.
+  /// It is called if the connection is no longer available.
+  /// For example, server restarts or crashes.
+  void destroy();
 }

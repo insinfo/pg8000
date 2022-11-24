@@ -256,7 +256,7 @@ dynamic timestamp_in(value) {
   }
   //var pattern =  value.contain('.') ? "%Y-%m-%d %H:%M:%S.%f" : "%Y-%m-%d %H:%M:%S";
   var formattedValue = value;
-  formattedValue += 'Z';
+
   return DateTime.parse(formattedValue);
 }
 
@@ -279,10 +279,10 @@ dynamic timestamptz_in(value) {
   //if infinity values are required, rewrite the sql query to cast
   //the value to a string, i.e. your_column::text.
   var formattedValue = value;
+  formattedValue += 'Z';
   // PG will return the timestamp in the connection's timezone. The resulting DateTime.parse will handle accordingly.
 
-  var pattern =
-      value.contain('.') ? "%Y-%m-%d %H:%M:%S.%f%z" : "%Y-%m-%d %H:%M:%S%z";
+  //var pattern = value.contain('.') ? "%Y-%m-%d %H:%M:%S.%f%z" : "%Y-%m-%d %H:%M:%S%z";
   return DateTime.parse(formattedValue);
 }
 
@@ -312,7 +312,7 @@ final PY_PG = {
 
 /// mapeia tipos de dados Dart para funcões que convertem
 /// este tipo para o tipo Postgresql adequado
-final PY_TYPES = {
+final PY_TYPES = <Type, Function>{
   //Date: date_out, // date
   DateTime: datetime_out,
   // Decimal: numeric_out,  // numeric
@@ -394,3 +394,33 @@ final PG_TYPES = <int, Function>{
 //  VARCHAR_ARRAY: string_array_in, // varchar[]
   XID: int_in, // xid
 };
+
+dynamic make_param(Map<Type, Function> py_types, dynamic value) {
+  var func;
+  try {
+    func = py_types[value.runtimeType];
+  } catch (e) {
+    print('make_param error $e');
+    func = string_out;
+  }
+  // except KeyError:
+  //     func = str
+  //     for k, v in py_types.items():
+  //         try:
+  //             if isinstance(value, k):
+  //                 func = v
+  //                 break
+  //         except TypeError:
+  //             pass
+
+  return func(value);
+}
+
+List make_params(Map<Type, Function> py_types, List values) {
+  //return tuple([make_param(py_types, v) for v in values]);
+  var result = [];
+  for (var v in values) {
+    result.add(make_param(py_types, v));
+  }
+  return result;
+}

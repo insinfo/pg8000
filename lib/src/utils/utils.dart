@@ -153,4 +153,12 @@ class Utils {
 
     return results;
   }
+
+  static String itoa(int c) {
+    try {
+      return String.fromCharCodes([c]);
+    } catch (ex) {
+      return 'Invalid';
+    }
+  }
 }
