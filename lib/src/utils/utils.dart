@@ -118,8 +118,28 @@ class Utils {
     return result;
   }
 
+  ///retorna o tamanho de uma lista
   static int len(List list) {
+    if (list == null) {
+      return 0;
+    }
     return list.length;
+  }
+
+  /// https://ptyagicodecamp.github.io/dart-generators.html
+  /// gera uma sequencia serial sobre demanda
+  static Iterable<int> sequence([int firstval = -1, step = 1]) sync* {
+    var x = firstval;
+    while (true) {
+      yield x += step;
+    }
+  }
+
+  /// [num] tem que ser maior que 0
+  static Iterable<int> countDownFromSync(int num) sync* {
+    while (num > 0) {
+      yield num--;
+    }
   }
 
   ///[str] is converted to ascii bytes

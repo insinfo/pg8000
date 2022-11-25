@@ -1,10 +1,10 @@
 /// The current state of a connection.
 class ConnectionState {
-  final String _name;
-  const ConnectionState(this._name);
+  final String value;
+  const ConnectionState(this.value);
 
   @override
-  String toString() => _name;
+  String toString() => value;
 
   static const ConnectionState notConnected =
       const ConnectionState('notConnected');
@@ -20,4 +20,18 @@ class ConnectionState {
   // state is called "ready" in libpq. Doesn't make sense in a non-blocking impl.
   static const ConnectionState streaming = const ConnectionState('streaming');
   static const ConnectionState closed = const ConnectionState('closed');
+}
+
+class PreparedStatementState {
+  final String value;
+  const PreparedStatementState(this.value);
+
+  static const PreparedStatementState none =
+      const PreparedStatementState('none');
+
+  static const PreparedStatementState preparedStatement =
+      const PreparedStatementState('preparedStatement');
+
+  static const PreparedStatementState executeStatement =
+      const PreparedStatementState('executeStatement');
 }

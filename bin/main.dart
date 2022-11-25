@@ -27,15 +27,17 @@ void main(List<String> args) async {
     print('item: $item | ${item.map((i) => i.runtimeType).toList()}');
   }
 
-  // var value = [10];
-  // Future.delayed(Duration(microseconds: 10), () {
-  //   teste(value, null);
-  // });
+  // var query =
+  //     await com.prepare_statement('select * from crud_teste.pessoas limit \$1');
+  // query.addPreparedParams([1]);
+  // print('fim prepare_statement');
+  // var items = com.execute_named(query);
+  // await for (var item in items) {
+  //   print('item: $item | ${item.map((i) => i.runtimeType).toList()}');
+  // }
+  // print('fim execute_named');
+
+  //await com.close();
 
   //exit(0);
-}
-
-void teste([List items, List oids]) async {
-  await Future.delayed(Duration(milliseconds: 20));
-  print('teste $items');
 }
