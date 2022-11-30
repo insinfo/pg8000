@@ -12,6 +12,7 @@ dependencies:
   convert: any #">=1.0.0"
   charcode: any #">=1.0.0"
   rikulo_commons: any #">=5.0.1"
+  saslprep: ^1.0.2
 
 dev_dependencies:
   test: any

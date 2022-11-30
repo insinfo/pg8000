@@ -158,13 +158,19 @@ class Utils {
 
   ///https://github.com/dart-lang/sdk/issues/29837
   /// split list by
-  static List<List<T>> splitList<T>(List<T> list, dynamic splitBy) {
+  static List<List<T>> splitList<T>(List<T> inputList, dynamic splitBy) {
+    var list = inputList.last == splitBy ? inputList : [...inputList, splitBy];
+    // var list = inputList;
+    // if (list.last != splitBy) {
+    //   list.add(splitBy);
+    // }
     var results = <List<T>>[];
     var result = <T>[];
-    //var count = 0;
     for (var item in list) {
       if (item == splitBy) {
-        results.add(result);
+        if (result.isNotEmpty) {
+          results.add(result);
+        }
         result = [];
       } else {
         result.add(item);
@@ -172,6 +178,34 @@ class Utils {
     }
 
     return results;
+  }
+
+  /// Splits elements into lists.
+  ///
+  /// Starts a list at the start, and runs until [startSplit] returns true for an element.
+  /// That becomes the first list emitted.
+  /// Then skips elements until [endSplit] returns true, *starting with the same element again*.
+  /// The first element where [endSplit] returns true is the first element of the next list,
+  /// which the continues adding elements until [startSplit] returns true for a new element.
+  static Iterable<List<T>> splitAround<T>(List<T> myList,
+      bool Function(T) startSplit, bool Function(T) endSplit) sync* {
+    List<T> list = [];
+    bool first = true;
+    for (var element in myList) {
+      if (list != null) {
+        if (startSplit(element)) {
+          if (list.isNotEmpty) yield list;
+          list = null;
+        } else {
+          list.add(element);
+          continue;
+        }
+      }
+      if (endSplit(element)) {
+        list = [element];
+      }
+    }
+    if (list != null && list.isNotEmpty) yield list;
   }
 
   static String itoa(int c) {
