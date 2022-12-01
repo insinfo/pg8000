@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:convert/convert.dart';
 import 'package:pg8000/src/converters.dart';
 import 'package:pg8000/src/core.dart';
 import 'package:pg8000/src/ssl_context.dart';
@@ -17,45 +18,40 @@ void main(List<String> args) async {
 
   var sslContext = SslContext.createDefaultContext();
 
-  var con = CoreConnection(
-    'usarioscram', //usarioscram //postgres
-    database: 'sistemas', //sistemas
-    host: 'localhost', //localhost
-    port: 5432,
-    password: 's1sadm1n', //s1sadm1n
-    // sslContext: sslContext,
-  );
-
   // var con = CoreConnection(
-  //   'sw.suporte', //usarioscram //postgres
-  //   database: 'siamweb', //sistemas
-  //   host: '10.0.0.25', //localhost
+  //   'usarioscram', //usarioscram //postgres
+  //   database: 'sistemas', //sistemas
+  //   host: 'localhost', //localhost
   //   port: 5432,
-  //   password: 'suporte', //s1sadm1n
+  //   password: 's1sadm1n', //s1sadm1n
   //   // sslContext: sslContext,
   // );
 
+  var con = CoreConnection('sw.suporte', //usarioscram //postgres
+      database: 'siamweb', //sistemas
+      host: '10.0.0.25', //localhost
+      port: 5432,
+      password: 'suporte', //s1sadm1n
+      textCharset: 'latin1'
+      // sslContext: sslContext,
+      );
+
   await con.connect();
+
   //observacoes,resumo_assunto
-  // var res = await con.executeSimple('''select *
-  //     from protocolo.processo_historico
-  //     where ano_exercicio=2022 AND cod_processo=590 limit 1''').toList();
+  var res = await con.executeSimple('''select *
+      from protocolo.processo_historico
+      where ano_exercicio=2022 AND cod_processo=590 limit 1''').toList();
 
-  // print('main $res');
+  print('main ${res.first.toColumnMap()}');
 
-  con.notifications.listen((event) async {
-    print('$event');
-    //var id = jsonDecode(event['payload'])['record']['id'];
+  // con.notifications.listen((event) async {
+  //   print('$event');
+  // });
 
-    // var dados = await con
-    //     .executeSimple('select * from crud_teste.cursos where id =$id')
-    //     .toList();
-    // print('notification: ${dados[0]}');
-  });
+  //await con.execute('LISTEN "db_change_event"');
 
-  await con.execute('LISTEN "db_change_event"');
-
-  //await con.execute("NOTIFY aliens_landed, 'This is the payload'");
+  //await con.execute("NOTIFY db_change_event, 'This is the payload'");
 
   // Timer.periodic(Duration(milliseconds: 1000), (t) async {
   // final transa = await con.beginTransaction();

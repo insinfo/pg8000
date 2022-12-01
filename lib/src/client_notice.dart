@@ -1,5 +1,5 @@
-class ClientMessageNotice {
-  ClientMessageNotice(
+class ClientNotice {
+  ClientNotice(
       {this.isError: false,
       this.severity,
       this.message,

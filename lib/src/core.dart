@@ -7,14 +7,18 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:pg8000/src/buffer_experiments/ReadBuffer.dart';
+import 'package:pg8000/src/row_info.dart';
 import 'package:pg8000/src/sasl_scram/sasl_scram.dart';
 import 'package:pg8000/src/utils/utils.dart';
 
-import 'client_message.dart';
+import 'client_notice.dart';
+import 'column_description.dart';
 import 'converters.dart';
 import 'exceptions.dart';
-import 'server_message.dart';
+import 'server_info.dart';
+import 'server_notice.dart';
 import 'ssl_context.dart';
+import 'substitute.dart';
 import 'transaction_context.dart';
 import 'utils/buffer.dart';
 import 'connection_state.dart';
@@ -339,12 +343,12 @@ class CoreConnection {
   int port;
   List<int> passwordBytes;
   dynamic source_address;
-  dynamic unix_sock;
+  bool isUnixSocket = false;
   //SSLv3/TLS TLSv1.3
   SslContext sslContext;
   dynamic timeout;
-  bool tcp_keepalive;
-  String application_name;
+  bool tcpKeepalive;
+  String applicationName;
   dynamic replication;
   // for SCRAM-SHA-256 auth
   ScramAuthenticator scramAuthenticator;
@@ -364,8 +368,13 @@ class CoreConnection {
   //Set _statement_nums;
 
   Socket _socket;
+  //client_encoding
+  //String clientEncoding = 'utf8';
 
-  //String _clientEncoding = 'utf8';
+  String defaultCodeCharset = 'ascii'; //ascii
+  String textCharset = 'utf8'; //utf8
+
+  TypeConverter typeConverter;
 
   // var _commands_with_count = [
   //   "INSERT".codeUnits,
@@ -383,14 +392,14 @@ class CoreConnection {
   final _notices = StreamController<dynamic>.broadcast();
   Stream<dynamic> get notices => _notices.stream;
 
-  Map<String, dynamic> serverParameters = <String, dynamic>{};
+  //Map<String, dynamic> serverParameters = <String, dynamic>{};
+
+  ServerInfo serverInfo = ServerInfo();
 
   String user;
   String password;
 
   Duration connectionTimeout = Duration(seconds: 180);
-
-  dynamic channel_binding;
 
   //Future<dynamic> Function() _flush;
   //void Function(List<int> d) _write;
@@ -398,7 +407,7 @@ class CoreConnection {
   ///  Int32(196608) - Protocol version number.  Version 3.0.
   int protocol = 196608;
 
-  Map<String, dynamic> init_params = <String, dynamic>{};
+  Map<String, dynamic> _initParams = <String, dynamic>{};
 
   List<int> _transaction_status;
 
@@ -423,19 +432,26 @@ class CoreConnection {
   TransactionContext _currentTransaction;
   int _transactionId = 0;
 
-  CoreConnection(this.user,
-      {this.host = 'localhost',
-      this.database,
-      this.port = 5432,
-      this.password,
-      this.source_address,
-      this.unix_sock,
-      this.sslContext,
-      this.timeout,
-      this.tcp_keepalive = true,
-      this.application_name,
-      this.replication,
-      this.connectionName}) {
+  /// [textCharset] utf8 | latin1 | ascii
+  /// [host] ip, dns or unix socket
+  CoreConnection(
+    this.user, {
+    this.host = 'localhost',
+    this.database,
+    this.port = 5432,
+    this.password,
+    this.source_address,
+    this.isUnixSocket = false,
+    this.sslContext,
+    this.timeout,
+    this.tcpKeepalive = true,
+    this.applicationName,
+    this.replication,
+    this.connectionName,
+    this.textCharset = 'utf8',
+  }) {
+    typeConverter =
+        TypeConverter(textCharset, serverInfo, connectionName: connectionName);
     _init();
   }
 
@@ -450,48 +466,52 @@ class CoreConnection {
     }
     connectionId++;
 
-    init_params = <String, dynamic>{
+    _initParams = <String, dynamic>{
       "user": user,
       "database": database,
-      "application_name": application_name,
+      "application_name": applicationName,
       "replication": replication,
     };
 
-    var init_params_entries = [...init_params.entries];
+    var init_params_entries = [..._initParams.entries];
     for (var entry in init_params_entries) {
       if (entry.value is String) {
-        init_params[entry.key] = utf8.encode(entry.value);
+        _initParams[entry.key] =
+            typeConverter.charsetEncode(entry.value, textCharset);
       } else if (entry.value == null) {
-        init_params.remove(entry.key);
+        _initParams.remove(entry.key);
       }
     }
 
     _buffer = Buffer();
 
-    this.userBytes = init_params["user"];
+    this.userBytes = _initParams['user'];
 
     if (password is String) {
-      this.passwordBytes = utf8.encode(password);
+      this.passwordBytes = typeConverter.charsetEncode(password, textCharset);
     }
   }
 
+  void _setKeepAlive() {
+    RawSocketOption option;
+    if (Platform.isAndroid || Platform.isLinux) {
+      option =
+          RawSocketOption.fromBool(LINUX_SOL_SOCKET, LINUX_SO_KEEPALIVE, true);
+    } else {
+      option = RawSocketOption.fromBool(
+          WINDOWS_SOL_SOCKET, WINDOWS_SO_KEEPALIVE, true);
+    }
+    _socket.setRawOption(option);
+  }
+
   Future<CoreConnection> connect() async {
-    if (unix_sock == null && host != null) {
+    if (isUnixSocket == false && host != null) {
       try {
         // remover waitFor no futuro
-        _socket = await Socket.connect(host, port, timeout: connectionTimeout);
-        //  .timeout(connectionTimeout, onTimeout: onTimeout);
+        _socket = await Socket.connect(host, port).timeout(connectionTimeout);
 
-        if (tcp_keepalive) {
-          RawSocketOption option;
-          if (Platform.isAndroid || Platform.isLinux) {
-            option = RawSocketOption.fromBool(
-                LINUX_SOL_SOCKET, LINUX_SO_KEEPALIVE, true);
-          } else {
-            option = RawSocketOption.fromBool(
-                WINDOWS_SOL_SOCKET, WINDOWS_SO_KEEPALIVE, true);
-          }
-          _socket.setRawOption(option);
+        if (tcpKeepalive == true) {
+          _setKeepAlive();
         }
 
         state = ConnectionState.socketConnected;
@@ -501,8 +521,11 @@ class CoreConnection {
             """Can't create a connection to host $host and port $port 
                     (timeout is $timeout and source_address is $source_address).""");
       }
-    } else if (unix_sock != null) {
-      throw UnimplementedError('unix_sock not implemented');
+    } else if (isUnixSocket == true) {
+      //throw UnimplementedError('unix_sock not implemented');
+      _socket = await Socket.connect(
+              InternetAddress(host, type: InternetAddressType.unix), port)
+          .timeout(connectionTimeout);
     } else {
       throw PostgresqlException("one of host or unix_sock must be provided");
     }
@@ -573,9 +596,10 @@ class CoreConnection {
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
-  Stream<dynamic> executeSimple(String statement) {
+  Stream<Row> executeSimple(String statement, [values]) {
     try {
-      //if (values != null) sql = substitute(sql, values, _typeConverter.encode);
+      if (values != null)
+        statement = substitute(statement, values, typeConverter.encodeValue);
       var query = Query(statement);
       query.state = QueryState.init;
       query.queryType = QueryType.simple;
@@ -588,7 +612,7 @@ class CoreConnection {
 
   /// execute a prepared unnamed statement
   /// Example: com.executeUnnamed('select * from crud_teste.pessoas limit \$1', [1]);
-  Stream<dynamic> executeUnnamed(String statement, List params,
+  Stream<Row> executeUnnamed(String statement, List params,
       [List oids = const []]) {
     try {
       var query = Query(statement);
@@ -623,7 +647,7 @@ class CoreConnection {
     return newQuery;
   }
 
-  Stream<dynamic> executeNamed(Query query) {
+  Stream<Row> executeNamed(Query query) {
     try {
       //cria uma copia
       var newQuery = query.clone();
@@ -741,7 +765,8 @@ class CoreConnection {
   Future<dynamic> _sendExecuteSimpleStatement(Query query) async {
     // execute_simple
     // print('send execute_simple ');
-    _send_message(QUERY, [...utf8.encode(query.sql), NULL_BYTE]);
+    _send_message(QUERY,
+        [...typeConverter.charsetEncode(query.sql, textCharset), NULL_BYTE]);
     await this._sock_flush();
   }
 
@@ -755,7 +780,7 @@ class CoreConnection {
     this._send_DESCRIBE_STATEMENT([NULL_BYTE]);
     this._sock_write(SYNC_MSG);
     await this._sock_flush();
-    var params = make_params(PY_TYPES, query.preparedParams);
+    var params = typeConverter.makeParams(query.preparedParams);
     query.isPreparedComplete = false;
     this._send_BIND([NULL_BYTE], params);
     // this.handle_messages(context)
@@ -766,17 +791,11 @@ class CoreConnection {
   }
 
   Future<dynamic> _sendPreparedStatement(Query query) async {
-    // var statement_name_bin = <int>[];
-    // for (var i in Utils.sequence()) {
-    //   var statement_name = "pg8000_statement_$i";
-    //   statement_name_bin = [...ascii.encode(statement_name), NULL_BYTE];
-    //   if (!_statement_nums.contains(statement_name_bin)) {
-    //     _statement_nums.add(statement_name_bin);
-    //     break;
-    //   }
-    // }
     //print('send prepare_statement');
-    var statementNameBytes = [...ascii.encode(query.statementName), NULL_BYTE];
+    var statementNameBytes = [
+      ...typeConverter.charsetEncode(query.statementName, defaultCodeCharset),
+      NULL_BYTE
+    ];
     _send_PARSE(statementNameBytes, query.sql, query.oids);
     _send_DESCRIBE_STATEMENT(statementNameBytes);
     this._sock_write(SYNC_MSG);
@@ -785,8 +804,11 @@ class CoreConnection {
 
   Future<dynamic> _sendExecuteNamedStatement(Query query) async {
     print('send namedStatement:');
-    var params = make_params(PY_TYPES, query.preparedParams);
-    var statementNameBytes = [...ascii.encode(query.statementName), NULL_BYTE];
+    var params = typeConverter.makeParams(query.preparedParams);
+    var statementNameBytes = [
+      ...typeConverter.charsetEncode(query.statementName, defaultCodeCharset),
+      NULL_BYTE
+    ];
     this._send_BIND(statementNameBytes, params);
     this._send_EXECUTE();
     this._sock_write(SYNC_MSG);
@@ -820,16 +842,17 @@ class CoreConnection {
 
     // val is array of bytes
     var val = i_pack(protocol);
-    for (var entry in init_params.entries) {
+    for (var entry in _initParams.entries) {
       val.addAll([
-        ...ascii.encode(entry.key), //.toList()
+        ...typeConverter.charsetEncode(
+            entry.key, defaultCodeCharset), //.toList()
         NULL_BYTE,
         ...entry.value,
         NULL_BYTE
       ]);
     }
     val.add(0);
-    //print(utf8.decode(val));
+
     this._sock_write(i_pack(Utils.len(val) + 4));
     this._sock_write(val);
     await _sock_flush();
@@ -901,18 +924,18 @@ class CoreConnection {
   void _handle_PARSE_COMPLETE(List<int> data) {
     // Byte1('1') - Identifier.
     //Int32(4) - Message length, including self.
-    // print('handle_PARSE_COMPLETE ${utf8.decode(data, allowMalformed: true)}');
+    // print('handle_PARSE_COMPLETE ${charsetDecode(data, allowMalformed: true)}');
   }
 
   void _handle_BIND_COMPLETE(List<int> data) {
-    // print('handle_BIND_COMPLETE ${utf8.decode(data, allowMalformed: true)}');
+    // print('handle_BIND_COMPLETE ${charsetDecode(data, allowMalformed: true)}');
     //informa que terminaou a execução dos passos de uma prepared query
     _query.isPreparedComplete = true;
   }
 
   void _handle_PARAMETER_DESCRIPTION(List<int> data) {
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
-    // print(  'handle_PARAMETER_DESCRIPTION ${utf8.decode(data, allowMalformed: true)}');
+    // print(  'handle_PARAMETER_DESCRIPTION ${charsetDecode(data, allowMalformed: true)}');
     // count = h_unpack(data)[0]
     //context.parameter_oids = unpack_from("!" + "i" * count, data, 2)
   }
@@ -976,35 +999,44 @@ class CoreConnection {
     var idx = 2;
 
     /// informações das colunas
-    List<Map<String, dynamic>> columns = [];
+    var list = <ColumnDescription>[];
 
     /// funções de converção de tipos
-    var input_funcs = <Function>[];
+    //var input_funcs = <Function>[];
 
     for (var i = 0; i < count; i++) {
       var name = data.sublist(idx, data.indexOf(NULL_BYTE, idx));
       idx += Utils.len(name) + 1;
       var unpackValues = ihihih_unpack(data, idx);
-      var field = <String, dynamic>{};
-      field["table_oid"] = unpackValues[0];
-      field["column_attrnum"] = unpackValues[1];
-      field["type_oid"] = unpackValues[2];
-      field["type_size"] = unpackValues[3];
-      field["type_modifier"] = unpackValues[4];
-      field["format"] = unpackValues[5];
-      field['name'] = utf8.decode(name);
+      //var field = <String, dynamic>{};
+      // field["table_oid"] = unpackValues[0];
+      // field["column_attrnum"] = unpackValues[1];
+      // field["type_oid"] = unpackValues[2];
+      // field["type_size"] = unpackValues[3];
+      // field["type_modifier"] = unpackValues[4];
+      // field["format"] = unpackValues[5];
+      // field['name'] = typeConverter.charsetDecode(name, textCharset);
+      //columns.add(field);
+      int tableOid = unpackValues[0]; //fieldId
+      int columnAttrnum = unpackValues[1]; //tableColNo
+      int typeOid = unpackValues[2]; //fieldType
+      int typeSize = unpackValues[3]; //dataSize
+      int typeModifier = unpackValues[4]; //typeModifier
+      int formatCode = unpackValues[5]; //formatCode
+      String fieldName = typeConverter.charsetDecode(name, textCharset);
       idx += 18;
-      columns.add(field);
+
+      list.add(ColumnDescription(i, fieldName, tableOid, columnAttrnum, typeOid,
+          typeSize, typeModifier, formatCode));
       //mapeias a funções de conversão de tipo para estas colunas
-      input_funcs.add(PG_TYPES[field["type_oid"]]);
+      //input_funcs.add(PG_TYPES[field["type_oid"]]);
     }
 
     final query = _query;
     query.columnCount = count;
-    query.columns = UnmodifiableListView(columns);
+    query.columns = UnmodifiableListView(list);
     //query.commandIndex++;
-
-    query.input_funcs = input_funcs;
+    //query.input_funcs = input_funcs;
     //isso é por que prepareStatement não emite COMMAND_COMPLETE
     if (query.queryType == QueryType.prepareStatement) {
       query.state = QueryState.done;
@@ -1020,15 +1052,20 @@ class CoreConnection {
     var idx = 2;
     var row = [];
     var v;
-    for (var func in query.input_funcs) {
+    for (var i = 0; i < query.columnCount; i++) {
+      var col = query.columns[i];
       var vlen = i_unpack(data, idx)[0];
       idx += 4;
       if (vlen == -1) {
         v = null;
       } else {
         var bytes = data.sublist(idx, idx + vlen);
-        var stringVal = utf8.decode(bytes);
-        v = func(stringVal);
+        var stringVal = typeConverter.charsetDecode(bytes, textCharset);
+        //v = func(stringVal);
+        v = typeConverter.decodeValue(
+          stringVal,
+          col.fieldType,
+        );
         idx += vlen;
         //print('handle_DATA_ROW $stringVal | $v | ${v.runtimeType}');
       }
@@ -1048,7 +1085,8 @@ class CoreConnection {
       }
     }
 
-    var commandString = utf8.decode(data.sublist(0, data.length - 1));
+    var commandString = typeConverter.charsetDecode(
+        data.sublist(0, data.length - 1), textCharset);
     var values = commandString.split(' ');
     int rowsAffected = int.tryParse(values.last) ?? 0;
 
@@ -1063,13 +1101,14 @@ class CoreConnection {
   void _send_PARSE(List<int> statement_name_bin, String statement, List oids) {
     //bytearray
     var val = <int>[...statement_name_bin];
-    val.addAll([...utf8.encode(statement), NULL_BYTE]);
+    val.addAll(
+        [...typeConverter.charsetEncode(statement, textCharset), NULL_BYTE]);
 
     val.addAll(h_pack(Utils.len(oids)));
     for (var oid in oids) {
       val.addAll(i_pack(oid == -1 ? 0 : oid));
     }
-    //print("send_PARSE val: ${utf8.decode(val)}");
+
     this._send_message(PARSE, val);
     this._sock_write(FLUSH_MSG);
   }
@@ -1095,7 +1134,7 @@ class CoreConnection {
       if (value == null) {
         retval.addAll(i_pack(-1));
       } else {
-        var val = utf8.encode(value);
+        var val = typeConverter.charsetEncode(value, textCharset);
         retval.addAll(i_pack(Utils.len(val)));
         retval.addAll(val);
       }
@@ -1131,11 +1170,12 @@ class CoreConnection {
     var map = <String, String>{};
     for (var bytes in dataSplit) {
       if (bytes.isNotEmpty) {
-        var key = ascii.decode(bytes.sublist(0, 1));
-        map[key] = utf8.decode(bytes.sublist(1));
+        var key = typeConverter.charsetDecode(
+            bytes.sublist(0, 1), defaultCodeCharset);
+        map[key] = typeConverter.charsetDecode(bytes.sublist(1), textCharset);
       }
     }
-    var msg = ServerMessageNotice(false, map, connectionName);
+    var msg = ServerNotice(false, map, connectionName);
     _notices.add(msg);
     print('handle_NOTICE_RESPONSE');
   }
@@ -1146,9 +1186,11 @@ class CoreConnection {
     var backend_pid = i_unpack(data)[0];
     var idx = 4;
     var null_idx = data.indexOf(NULL_BYTE, idx);
-    //ascii
-    var channel = utf8.decode(data.sublist(idx, null_idx));
-    var payload = utf8.decode(data.sublist(null_idx + 1, data.length - 1));
+
+    var channel =
+        typeConverter.charsetDecode(data.sublist(idx, null_idx), textCharset);
+    var payload = typeConverter.charsetDecode(
+        data.sublist(null_idx + 1, data.length - 1), textCharset);
     this._notifications.add(
         {'backendPid': backend_pid, 'channel': channel, 'payload': payload});
   }
@@ -1185,10 +1227,14 @@ class CoreConnection {
       //md5 message send to server
       var pwd = [
         ...'md5'.codeUnits,
-        ...Utils.md5HexBytesAscii([
-          ...Utils.md5HexBytesAscii([...passwordBytes, ...userBytes]),
-          ...salt
-        ])
+        ...typeConverter.charsetEncode(
+            Utils.md5HexString([
+              ...typeConverter.charsetEncode(
+                  Utils.md5HexString([...passwordBytes, ...userBytes]),
+                  defaultCodeCharset),
+              ...salt
+            ]),
+            defaultCodeCharset)
       ];
 
       this._send_message(PASSWORD, [...pwd, NULL_BYTE]);
@@ -1197,14 +1243,13 @@ class CoreConnection {
     // AuthenticationSASL
     else if (auth_code == 10) {
       //print('AuthenticationSASL $auth_code');
-      //print('AuthenticationSASL: ${utf8.decode(data, allowMalformed: true)}');
 
       var dataPart = data.sublist(4, data.length - 2);
       //var dataPartSplit = Utils.splitAround(data, (v) => v == NULL_BYTE, (v) => v != NULL_BYTE);
       var dataPartSplit = Utils.splitList(dataPart, NULL_BYTE);
-      var mechanisms = dataPartSplit.map((e) => ascii.decode(e)).toList();
-
-      //print('AuthenticationSASL mechanisms: $mechanisms');
+      var mechanisms = dataPartSplit
+          .map((e) => typeConverter.charsetDecode(e, defaultCodeCharset))
+          .toList();
 
       this.scramAuthenticator = ScramAuthenticator(
         mechanisms.last,
@@ -1223,7 +1268,8 @@ class CoreConnection {
           );
 
       var mech = [
-        ...ascii.encode(this.scramAuthenticator.mechanism.name),
+        ...typeConverter.charsetEncode(
+            this.scramAuthenticator.mechanism.name, defaultCodeCharset),
         NULL_BYTE
       ];
       var saslInitialResponse = [...mech, ...i_pack(Utils.len(init)), ...init];
@@ -1232,8 +1278,7 @@ class CoreConnection {
       this._sock_flush();
     } else if (auth_code == 11) {
       // AuthenticationSASLContinue
-      //print('AuthenticationSASLContinue $auth_code');
-      // self.auth.set_server_first(data[4:].decode("utf8"))
+
       var msg = this.scramAuthenticator.handleMessage(
             SaslMessageType.AuthenticationSASLContinue,
             // Append the bytes receiver from server
@@ -1243,8 +1288,7 @@ class CoreConnection {
       this._sock_flush();
     } else if (auth_code == 12) {
       // AuthenticationSASLFinal
-      //print('AuthenticationSASLFinal $auth_code');
-      //this.auth.set_server_final(data[4:].decode("utf8"))
+
       this.scramAuthenticator.handleMessage(
             SaslMessageType.AuthenticationSASLFinal,
             // Append the bytes receiver from server
@@ -1263,25 +1307,49 @@ class CoreConnection {
   void _handle_PARAMETER_STATUS(List<int> data) {
     //print('handle_PARAMETER_STATUS');
     var pos = data.indexOf(NULL_BYTE);
-    var key = ascii.decode(data.sublist(0, pos));
-    var value = ascii.decode(data.sublist(pos + 1));
-    serverParameters[key] = value;
+    var key =
+        typeConverter.charsetDecode(data.sublist(0, pos), defaultCodeCharset);
+    var value = typeConverter.charsetDecode(
+        data.sublist(pos + 1, data.length - 1), textCharset);
+    serverInfo.rawParams[key] = value;
 
     if (key == 'client_encoding' && value != 'UTF8') {
       var msg =
-          '''client_encoding parameter must remain as UTF8 for correct string 
+          '''client_encoding parameter must remain as UTF8 for correct string
           handling. client_encoding is: "$value".''';
-      _notices.add(ClientMessageNotice(
+      _notices.add(ClientNotice(
           severity: 'WARNING', message: msg, connectionName: connectionName));
     }
 
-    if (key == 'client_encoding') {
-      //clientEncoding = value.toLowerCase();
-      print('_handle_PARAMETER_STATUS client_encoding: $value');
-    } else if (key == 'integer_datetimes') {
-      //if( value == "on"){}
-    } else if (key == 'server_version') {
-      //
+    switch (key.toLowerCase()) {
+      case 'client_encoding':
+        serverInfo.clientEncoding = value;
+        // clientEncoding = typeConverter.PG_PY_ENCODINGS[value.trim().toLowerCase()];
+        break;
+      case 'datestyle':
+        serverInfo.dateStyle = value;
+        break;
+      case 'integer_datetimes':
+        serverInfo.integerDatetimes = value;
+        break;
+      case 'is_superuser':
+        serverInfo.isSuperuser = value;
+        break;
+      case 'server_encoding':
+        serverInfo.serverEncoding = value;
+        break;
+      case 'server_version':
+        serverInfo.serverVersion = value;
+        break;
+      case 'session_authorization':
+        serverInfo.sessionAuthorization = value;
+        break;
+      case 'standard_conforming_strings':
+        serverInfo.standardConformingStrings = value;
+        break;
+      case 'timezone':
+        serverInfo.timeZone = value;
+        break;
     }
   }
 
@@ -1289,7 +1357,7 @@ class CoreConnection {
     print('_handleSocketError $error');
 
     if (state == ConnectionState.closed) {
-      _notices.add(ClientMessageNotice(
+      _notices.add(ClientNotice(
           isError: false,
           severity: 'WARNING',
           message: 'Socket error after socket closed.',
@@ -1309,7 +1377,7 @@ class CoreConnection {
         query.state = QueryState.done;
         query.addError(PostgresqlException(msg, errorCode: error));
       } else {
-        _notices.add(ClientMessageNotice(
+        _notices.add(ClientNotice(
             isError: true,
             connectionName: connectionName,
             severity: 'ERROR',
@@ -1327,7 +1395,6 @@ class CoreConnection {
   }
 
   void _handle_ERROR_RESPONSE(List<int> data) {
-    //print('_handle_ERROR_RESPONSE ${utf8.decode(data, allowMalformed: true)}');
     var dataSplit = Utils.splitList<int>(data, NULL_BYTE);
 
     // var mapKeyToVal = {
@@ -1349,16 +1416,17 @@ class CoreConnection {
     var map = <String, String>{};
     for (var bytes in dataSplit) {
       if (bytes.isNotEmpty) {
-        var key = ascii.decode(bytes.sublist(0, 1));
+        var key = typeConverter.charsetDecode(
+            bytes.sublist(0, 1), defaultCodeCharset);
         // var keyM = mapKeyToVal[key];
         // if (keyM != null) {
         //   key = keyM;
         // }
-        map[key] = utf8.decode(bytes.sublist(1));
+        map[key] = typeConverter.charsetDecode(bytes.sublist(1), textCharset);
       }
     }
 
-    var msg = ServerMessageNotice(true, map, connectionName);
+    var msg = ServerNotice(true, map, connectionName);
 
     var ex = PostgresqlException(
       msg.message,
@@ -1422,7 +1490,7 @@ class CoreConnection {
       _sock_write(TERMINATE_MSG);
       await _sock_flush();
     } catch (e, st) {
-      _notices.add(ClientMessageNotice(
+      _notices.add(ClientNotice(
           severity: 'WARNING',
           message: 'Exception while closing connection. Closed without sending '
               'terminate message.',
@@ -1510,28 +1578,30 @@ class Query {
   List get oids => _oids;
 
   /// funções de conversão de tipo para as colunas
-  List<Function> input_funcs = [];
+  //List<Function> input_funcs = [];
   //List<List> _rows;
   int rowCount = -1;
   int columnCount = 0;
 
   /// informações das colunas
-  List<Map<String, dynamic>> columns;
+  List<ColumnDescription> columns;
   dynamic error = null;
 
-  StreamController<dynamic> _controller = StreamController<dynamic>();
-  Stream<dynamic> get stream => _controller.stream;
+  StreamController<Row> _controller = StreamController<Row>();
+  Stream<Row> get stream => _controller.stream;
 
   void reInitStream() {
     _controller = StreamController<dynamic>();
   }
 
-  Query(this.sql,
-      {List preparedParamsP,
-      this.prepareStatementId = 0,
-      List oidsP,
-      this.columns,
-      this.input_funcs = const []}) {
+  Query(
+    this.sql, {
+    List preparedParamsP,
+    this.prepareStatementId = 0,
+    List oidsP,
+    this.columns,
+    //this.input_funcs = const [],
+  }) {
     if (preparedParamsP != null) {
       _params = preparedParamsP;
     }
@@ -1550,7 +1620,7 @@ class Query {
       prepareStatementId: this.prepareStatementId,
       preparedParamsP: this.preparedParams,
       oidsP: this.oids,
-      input_funcs: this.input_funcs,
+      //input_funcs: this.input_funcs,
     );
     newQuery.queryType = this.queryType;
     newQuery.columnCount = this.columnCount;
@@ -1574,7 +1644,8 @@ class Query {
     _oids = oids;
   }
 
-  void addRow(List row) {
+  void addRow(List<dynamic> rowData) {
+    var row = Row(rowData, columns);
     rowCount++;
     //_rows.add(row);
     _controller.add(row);

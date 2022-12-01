@@ -156,6 +156,13 @@ class Utils {
     return ascii.encode(hexdigest);
   }
 
+  ///[bytes] is ascii bytes
+  /// return ascii bytes of hex of md5
+  static String md5HexString(List<int> bytes) {
+    var hexdigest = hex.encode(md5.convert(bytes).bytes);
+    return hexdigest;
+  }
+
   ///https://github.com/dart-lang/sdk/issues/29837
   /// split list by
   static List<List<T>> splitList<T>(List<T> inputList, dynamic splitBy) {
@@ -178,6 +185,38 @@ class Utils {
     }
 
     return results;
+  }
+
+  /// space.
+  /// tab (\t)
+  /// carriage-return (\r)
+  /// newline (\n)
+  /// form-feed (\f.
+  /// check if a string contains only space
+  static bool isspace(String val) {
+    final regex = RegExp(r'\s');
+    return regex.hasMatch(val);
+  }
+
+  static bool stringContainsSpace(String val) {
+    return val.contains(RegExp(r'\s'));
+  }
+
+  ///any(c in val for c in ("{", "}", ",", "\\"))
+  /// Utils.stringContains(val, ["{", "}", ",", "\\"])
+  static bool stringContains(String str, List<String> caracts) {
+    //any(c in val for c in ("{", "}", ",", "\\"))
+
+    bool isContain = false;
+
+    for (var c in caracts) {
+      if (str.contains(c)) {
+        isContain = true;
+        return isContain;
+      }
+    }
+
+    return isContain;
   }
 
   /// Splits elements into lists.

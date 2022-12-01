@@ -1,8 +1,7 @@
 import 'dart:collection';
 
-class ServerMessageNotice {
-  ServerMessageNotice(this.isError, Map<String, String> fields,
-      [this.connectionName])
+class ServerNotice {
+  ServerNotice(this.isError, Map<String, String> fields, [this.connectionName])
       : fields = UnmodifiableMapView<String, String>(fields),
         severity = fields['S'],
         code = fields['C'],

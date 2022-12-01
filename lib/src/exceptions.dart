@@ -1,4 +1,4 @@
-import 'server_message.dart';
+import 'server_notice.dart';
 
 class PostgresqlException implements Exception {
   PostgresqlException(this.message,
@@ -9,7 +9,7 @@ class PostgresqlException implements Exception {
   /// Note the connection name can be null in some cases when thrown by pool.
   final String connectionName;
 
-  final ServerMessageNotice serverMessage;
+  final ServerNotice serverMessage;
 
   /// Note may be null.
   final Object errorCode;
