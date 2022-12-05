@@ -10,8 +10,10 @@ environment:
 dependencies:
   crypto: any #">=2.0.0"
   convert: any #">=1.0.0"
+  #
+  #enough_convert: ^1.6.0
   #charcode: any #">=1.0.0"
-  #rikulo_commons: any #">=5.0.1"
+ 
   saslprep: ^1.0.2
 
 dev_dependencies:

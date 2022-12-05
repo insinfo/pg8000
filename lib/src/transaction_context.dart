@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:collection';
 import 'exceptions.dart';
-import 'core.dart';
+
+import 'query.dart';
 
 class TransactionContext {
   final int transactionId;

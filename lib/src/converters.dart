@@ -1,7 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:convert/convert.dart';
-import 'package:pg8000/src/buffer_experiments/ReadBuffer.dart';
 
 import 'charcode/ascii.dart';
 import 'exceptions.dart';
@@ -145,14 +145,27 @@ class TypeConverter {
   }
 
   /// Dart double para postgresql
-  dynamic float_out(v) {
-    return v.toString();
+  dynamic float_out(n) {
+    if (n.isNaN) return "'nan'";
+    if (n == double.infinity) return "'infinity'";
+    if (n == double.negativeInfinity) return "'-infinity'";
+    return n.toString();
+  }
+
+  // numeric_out
+  /// dart num type to postgresql numeric type
+  dynamic numeric_out(n) {
+    if (n.isNaN) return "'nan'";
+    if (n == double.infinity) return "'infinity'";
+    if (n == double.negativeInfinity) return "'-infinity'";
+    return n.toString();
   }
 
   /// Dart int para postgresql
-  dynamic int_out(v) {
+  dynamic int_out(n) {
     //return int.parse(v);
-    return v.toString();
+    if (n.isNaN) return "'nan'";
+    return n.toString();
   }
 
   array_out(List ar) {
@@ -161,11 +174,27 @@ class TypeConverter {
       var val;
       if (v == null) {
         val = "NULL";
+      } else if (v is Map) {
+        val = array_string_escape(json_out(v));
+      } else if (v is Uint8List) {
+        val = '"\\${bytes_out(v)}"';
+      } else if (v is List) {
+        val = array_out(v);
+      } else if (v is String) {
+        val = array_string_escape(v);
+      } else {
+        val = makeParam(v);
       }
+
+      result.add(val);
     }
+
+    return "{" + result.join(',') + "}";
   }
 
-  dynamic array_string_escape(List<String> v) {
+  dynamic array_string_escape(String inputString) {
+    var v = inputString.split('');
+
     var cs = [];
     var val;
     for (var c in v) {
@@ -177,7 +206,7 @@ class TypeConverter {
       cs.add(c);
     }
     val = cs.join();
-    if (Utils.len(val) == 0 ||
+    if (val.length == 0 ||
         val == "NULL" ||
         Utils.stringContainsSpace(val) ||
         Utils.stringContains(val, ["{", "}", ",", "\\"])) {
@@ -187,12 +216,12 @@ class TypeConverter {
   }
 
   /// Dart date para postgresql
-  dynamic date_out(DateTime v) {
+  String date_out(DateTime v) {
     return v.toIso8601String();
   }
 
   /// Dart DateTime para postgresql
-  dynamic datetime_out(DateTime v) {
+  String datetime_out(DateTime v) {
     // if v.tzinfo is None:
     //     return v.isoformat()
     // else:
@@ -206,7 +235,7 @@ class TypeConverter {
   }
 
   /// Dart Map para postgresql
-  dynamic json_out(v) {
+  String json_out(v) {
     return jsonEncode(v);
   }
 
@@ -258,12 +287,23 @@ class TypeConverter {
     return stack[0][0];
   }
 
-  dynamic _array_in(dynamic adapter) {
-    var f = (data) => _parse_array(data, adapter);
-    return f;
+  dynamic bool_array_in(dynamic data) {
+    return _parse_array(data, bool_in);
   }
 
-  dynamic int_array_in(dynamic val) => _array_in(int);
+  dynamic bytes_array_in(dynamic data) {
+    return _parse_array(data, bytes_in);
+  }
+
+  dynamic int_array_in(dynamic data) {
+    return _parse_array(data, int_in);
+  }
+
+  dynamic bytes_in(data) {
+    //return bytes.fromhex(data[2:])
+    print('bytes_in ${data.runtimeType}');
+    hex.decode('abcdef');
+  }
 
   dynamic string_in(data) {
     return data;
@@ -295,9 +335,9 @@ class TypeConverter {
       );
     }
 
-    var formattedValue = value;
-    formattedValue = formattedValue + 'T00:00:00Z';
-    return DateTime.parse(formattedValue);
+    // var formattedValue = value;
+    // formattedValue = formattedValue + 'T00:00:00Z';
+    return DateTime.parse(value);
   }
 
   /// convert de posgresql timestamp para dart DateTime
@@ -317,7 +357,9 @@ class TypeConverter {
   /// Decodes [value] into a [DateTime] instance.
   ///
   /// Note: it will convert it to local time (via [DateTime.toLocal])
-  dynamic timestamptz_in(value) {
+  ///
+  /// TODO use https://github.com/AKushWarrior/instant/tree/master/lib/src
+  DateTime timestamptz_in(value) {
 // Built in Dart dates can either be local time or utc. Which means that the
     // the postgresql timezone parameter for the connection must be either set
     // to UTC, or the local time of the server on which the client is running.
@@ -333,7 +375,7 @@ class TypeConverter {
     //if infinity values are required, rewrite the sql query to cast
     //the value to a string, i.e. your_column::text.
     var formattedValue = value;
-    formattedValue += 'Z';
+    //formattedValue += 'Z';
     // PG will return the timestamp in the connection's timezone. The resulting DateTime.parse will handle accordingly.
 
     //var pattern = value.contain('.') ? "%Y-%m-%d %H:%M:%S.%f%z" : "%Y-%m-%d %H:%M:%S%z";
@@ -376,7 +418,7 @@ class TypeConverter {
   String _escape(Match m) => escapes[m[0]];
 
   String encodeArray(Iterable value, {String pgType}) {
-    final buf = new StringBuffer('array[');
+    final buf = StringBuffer('array[');
     for (final v in value) {
       if (buf.length > 6) buf.write(',');
       buf.write(encodeValueDefault(v));
@@ -445,64 +487,23 @@ class TypeConverter {
     return encodeJson(value);
   }
 
-  // final PY_PG = {
-  //   DateTime: DATE,
-  //   num: NUMERIC,
-  //   // IPv4Address: INET,
-  //   // IPv6Address: INET,
-  //   // IPv4Network: INET,
-  //   // IPv6Network: INET,
-  //   // PGInterval: INTERVAL,
-  //   // DateTime: TIME,
-  //   Duration: INTERVAL,
-  //   // String: UUID_TYPE,
-  //   bool: BOOLEAN,
-  //   // List: BYTES,
-  //   Map: JSONB,
-  //   double: FLOAT,
-  //   null: NULLTYPE,
-  //   // List: BYTES,
-  //   String: TEXT,
-  // };
-
-  // mapeia tipos de dados Dart para funcões que convertem
-  // este tipo para o tipo Postgresql adequado
-  // Map<Type, Function> get PY_TYPES => <Type, Function>{
-  //       //Date: date_out, // date
-  //       DateTime: datetime_out,
-  //       // Decimal: numeric_out,  // numeric
-  //       //enum: enum_out,  // enum
-  //       // IPv4Address: inet_out,  // inet
-  //       // IPv6Address: inet_out,  // inet
-  //       // IPv4Network: inet_out,  // inet
-  //       // IPv6Network: inet_out,  // inet
-  //       // PGInterval: interval_out,  // interval
-  //       // Time: time_out,  // time
-  //       // Timedelta: interval_out,  // interval
-  //       // UUID: uuid_out,  // uuid
-  //       bool: bool_out, // bool
-  //       // bytearray: bytes_out,  // bytea
-  //       Map: json_out, // jsonb
-  //       double: float_out, // float8
-  //       // type(None): null_out,  // null
-  //       // bytes: bytes_out,  // bytea
-  //       String: string_out, // unknown
-  //       int: int_out,
-  //       // list: array_out,
-  //       // tuple: array_out,
-  //     };
-
   PostgresqlException _error(String msg) {
     return PostgresqlException(msg, connectionName: connectionName);
   }
 
+  /// dart type to postgresql
+  /// based in python pg8000
+  /// TODO implement ip4_address type and money
+  /// based in https://github.com/dart-protocol/ip/tree/master/lib/src/ip
+  /// https://pub.dev/packages/money
   encodeValue2(dynamic value, Type type) {
+    //print('encodeValue2 ${value.runtimeType}');
     switch (type) {
       case DateTime:
         return datetime_out(value);
       case bool:
         return bool_out(value);
-      //bytearray
+      //bytearray Iterable<int>
       case Uint8List:
         return bytes_out(value);
       case Map:
@@ -515,8 +516,14 @@ class TypeConverter {
         return string_out(value);
       case int:
         return int_out(value);
-      case List:
+      case BigInt:
+        return value.toString();
+      case num:
+        return numeric_out(value);
+      case Iterable:
         return array_out(value);
+      //Iterable<int>
+      //if (value is Iterable) return encodeArray(value);
     }
   }
 
@@ -601,63 +608,6 @@ class TypeConverter {
 
     throw _error('bytea encoding not implemented. Pull requests welcome ;)');
   }
-  // mapeia tipos de dados PostgreSQL para funcões que convertem
-  // este tipo para o dart tipo adequado
-  // Map<int, Function> get PG_TYPES => <int, Function>{
-  //       BIGINT: int_in, // int8
-  //       BIGINT_ARRAY: int_array_in, // int8[]
-  //       BOOLEAN: bool_in, // bool
-  //       // BOOLEAN_ARRAY: bool_array_in, // bool[]
-  //       //  BYTES: bytes_in, // bytea
-  //       // BYTES_ARRAY: bytes_array_in, // bytea[]
-  //       CHAR: string_in, // char
-  //       // CHAR_ARRAY: string_array_in, // char[]
-  //       // CIDR_ARRAY: cidr_array_in, // cidr[]
-  //       CSTRING: string_in, // cstring
-  //       //  CSTRING_ARRAY: string_array_in, // cstring[]
-  //       DATE: date_in, // date
-  //       // DATE_ARRAY: date_array_in, // date[]
-  //       FLOAT: double_in, // _FLOAT8 _FLOAT4 701
-  //       // FLOAT_ARRAY: float_array_in, // float8[]
-  //       //INET: inet_in, // inet
-  //       // INET_ARRAY: inet_array_in, // inet[]
-  //       INTEGER: int_in, //INT4 INT2 BIGINT
-  //       INTEGER_ARRAY: int_array_in, // int4[]
-  //       JSON: json_in, // json
-  //       //  JSON_ARRAY: json_array_in, // json[]
-  //       JSONB: json_in, // jsonb
-  //       //  JSONB_ARRAY: json_array_in, // jsonb[]
-  //       MACADDR: string_in, // MACADDR type
-  //       MONEY: string_in, // money
-  //       // MONEY_ARRAY: string_array_in, // money[]
-  //       NAME: string_in, // name
-  //       // NAME_ARRAY: string_array_in, // name[]
-  //       NUMERIC: numeric_in, // numeric
-  //       // NUMERIC_ARRAY: numeric_array_in, // numeric[]
-  //       OID: int_in, // oid
-  //       // INTERVAL: interval_in, // interval
-  //       //  INTERVAL_ARRAY: interval_array_in, // interval[]
-  //       REAL: double_in, // float4
-  //       // REAL_ARRAY: float_array_in, // float4[]
-  //       SMALLINT: int_in, // int2
-  //       SMALLINT_ARRAY: int_array_in, // int2[]
-  //       // SMALLINT_VECTOR: vector_in, // int2vector
-  //       TEXT: string_in, // text
-  //       // TEXT_ARRAY: string_array_in, // text[]
-  //       // TIME: time_in, // time
-  //       // TIME_ARRAY: time_array_in, // time[]
-  //       INTERVAL: interval_in, // interval
-  //       TIMESTAMP: timestamp_in, // timestamp
-  //       //TIMESTAMP_ARRAY: timestamp_array_in, // timestamp
-  //       TIMESTAMPTZ: timestamptz_in, // timestamptz
-  //       // TIMESTAMPTZ_ARRAY: timestamptz_array_in, // timestamptz
-  //       UNKNOWN: string_in, // unknown
-  //       //  UUID_ARRAY: uuid_array_in, // uuid[]
-  //       // UUID_TYPE: uuid_in, // uuid
-  //       VARCHAR: string_in, // varchar
-  //       //  VARCHAR_ARRAY: string_array_in, // varchar[]
-  //       XID: int_in, // xid
-  //     };
 
   /// decode tipos de dados PostgreSQL o tipos dart adequado
   decodeValue2(String value, int pgType) {
@@ -1012,10 +962,12 @@ class TypeConverter {
     return result;
   }
 
-  dynamic _makeParam(dynamic value) {
+  dynamic makeParam(dynamic value) {
     try {
       //func = PY_TYPES[value.runtimeType];
-      return encodeValue(value, null);
+      //return encodeValue(value, null);
+
+      return encodeValue2(value, value.runtimeType);
     } catch (e) {
       print('make_param error $e');
     }
@@ -1027,7 +979,7 @@ class TypeConverter {
   List makeParams(List values) {
     var result = [];
     for (var v in values) {
-      result.add(_makeParam(v));
+      result.add(makeParam(v));
     }
     return result;
   }
@@ -1088,28 +1040,30 @@ class TypeConverter {
   };
 
   String charsetDecode(List<int> codeUnits, String encoding) {
-    switch (encoding) {
+    switch (encoding.toLowerCase()) {
       case 'utf8':
         return utf8.decode(codeUnits);
       case 'ascii':
         return ascii.decode(codeUnits);
       case 'latin1':
         return latin1.decode(codeUnits);
-
+      case 'iso-8859–1':
+        return latin1.decode(codeUnits);
       default:
         return utf8.decode(codeUnits, allowMalformed: true);
     }
   }
 
   List<int> charsetEncode(String codeUnits, String encoding) {
-    switch (encoding) {
+    switch (encoding.toLowerCase()) {
       case 'utf8':
         return utf8.encode(codeUnits);
       case 'ascii':
         return ascii.encode(codeUnits);
       case 'latin1':
         return latin1.encode(codeUnits);
-
+      case 'iso-8859–1':
+        return latin1.encode(codeUnits);
       default:
         return utf8.encode(codeUnits);
     }

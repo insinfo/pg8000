@@ -1,16 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-export 'dart:typed_data'
-    show
-        ByteData,
-        Endian,
-        Float32List,
-        Float64List,
-        Int32List,
-        Int64List,
-        Uint8List;
-
 //https://stackoverflow.com/questions/57536300/convert-int32-to-bytes-list-in-dart
 //Uint8List int32BigEndianBytes(int value) => Uint8List(4)..buffer.asByteData().setInt32(0, value, Endian.big);
 

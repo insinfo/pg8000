@@ -1,22 +1,14 @@
-import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
-import 'package:convert/convert.dart';
-import 'package:pg8000/src/converters.dart';
 import 'package:pg8000/src/core.dart';
-import 'package:pg8000/src/ssl_context.dart';
-import 'package:pg8000/src/utils/utils.dart';
-
-import 'dart:typed_data';
+import 'package:pg8000/src/pack_unpack.dart';
 
 void main(List<String> args) async {
   // user md5 = postgres
   //user scram = usarioscram
   //
 
-  var sslContext = SslContext.createDefaultContext();
+  //var sslContext = SslContext.createDefaultContext();
 
   // var con = CoreConnection(
   //   'usarioscram', //usarioscram //postgres
@@ -27,23 +19,38 @@ void main(List<String> args) async {
   //   // sslContext: sslContext,
   // );
 
-  var con = CoreConnection('sw.suporte', //usarioscram //postgres
-      database: 'siamweb', //sistemas
-      host: '10.0.0.25', //localhost
-      port: 5432,
-      password: 'suporte', //s1sadm1n
-      textCharset: 'latin1'
-      // sslContext: sslContext,
-      );
+  // var con = CoreConnection('sw.suporte', //usarioscram //postgres
+  //     database: 'teste', //'siamweb', //sistemas
+  //     host: '10.0.0.25', //localhost
+  //     port: 5432,
+  //     password: 'suporte', //s1sadm1n
+  //     textCharset: 'latin1'
+  //     // sslContext: sslContext,
+  //     );
 
-  await con.connect();
+  // await con.connect();
 
-  //observacoes,resumo_assunto
-  var res = await con.executeSimple('''select *
-      from protocolo.processo_historico
-      where ano_exercicio=2022 AND cod_processo=590 limit 1''').toList();
+  // //observacoes,resumo_assunto
+  // var res = await con.executeSimple('''select *
+  //     from protocolo.processo_historico
+  //     where ano_exercicio=2022 AND cod_processo=590 limit 1''').toList();
 
-  print('main ${res.first.toColumnMap()}');
+  // print('main ${res.first.toColumnMap()}');
+//   var res = await con.execute('''
+//   INSERT INTO teste_table (name) VALUES ('João')
+// ''');
+//   print('main ${res}');
+
+//   res = await con.execute(r'''
+//   INSERT INTO teste_table (name) VALUES ($1)
+// ''', ['João']);
+//   print('main ${res}');
+
+  // var res2 =
+  //     await con.executeSimple(''' SELECT * FROM teste_table  ''').toList();
+  // print('main ${res2}');
+
+  //var tyc = TypeConverter('utf8', null);
 
   // con.notifications.listen((event) async {
   //   print('$event');
@@ -152,5 +159,15 @@ void main(List<String> args) async {
 
   //await con.close();
 
-  //exit(0);
+  var stopw = Stopwatch()..start();
+  var result;
+  for (var i = 0; i < 100000000; i++) {
+    result = i_pack_fast(21474830);
+    //result = i_pack(21474830);
+  }
+  stopw.stop();
+  print('result: $result');
+  print('time: ${stopw.elapsed}');
+
+  exit(0);
 }

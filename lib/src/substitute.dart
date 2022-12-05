@@ -2,7 +2,7 @@ library postgresql.substitute;
 
 import 'dart:collection';
 import 'charcode/ascii.dart';
-import 'rikulo_util/pair.dart';
+import 'utils/pair.dart';
 //import 'package:rikulo_commons/util.dart';
 
 const int _TOKEN_TEXT = 1;

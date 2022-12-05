@@ -1,6 +1,7 @@
 import 'dart:collection';
 import 'dart:convert';
 
+//TODO re-implement based on https://github.com/dart-protocol/raw/blob/master/lib/src/raw_value.dart
 class Buffer {
   Buffer();
 
