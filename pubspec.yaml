@@ -17,5 +17,9 @@ dependencies:
   saslprep: ^1.0.2
 
 dev_dependencies:
+  #only for test of terrier buffer
+  matcher: any
+  benchmark_harness: any
+
   test: any
   yaml: any

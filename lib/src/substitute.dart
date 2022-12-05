@@ -1,7 +1,7 @@
 library postgresql.substitute;
 
 import 'dart:collection';
-import 'charcode/ascii.dart';
+import 'dependencies/charcode/ascii.dart';
 import 'utils/pair.dart';
 //import 'package:rikulo_commons/util.dart';
 

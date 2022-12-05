@@ -476,6 +476,16 @@ class ByteDataReader {
     return value;
   }
 
+  //isaque eu implementei
+  /// equivale a um readInt8
+  int readByte() {
+    _init(1);
+    final value = _data.getInt8(_offset);
+    _offset += 1;
+    return value;
+    // return read(1).first;
+  }
+
   int readInt32([Endian endian]) {
     _init(4);
     final value = _data.getInt32(_offset, endian ?? this.endian);

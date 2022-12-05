@@ -19,14 +19,14 @@ void main(List<String> args) async {
   //   // sslContext: sslContext,
   // );
 
-  // var con = CoreConnection('sw.suporte', //usarioscram //postgres
-  //     database: 'teste', //'siamweb', //sistemas
-  //     host: '10.0.0.25', //localhost
-  //     port: 5432,
-  //     password: 'suporte', //s1sadm1n
-  //     textCharset: 'latin1'
-  //     // sslContext: sslContext,
-  //     );
+  var con = CoreConnection('sw.suporte', //usarioscram //postgres
+      database: 'teste', //'siamweb', //sistemas
+      host: '10.0.0.25', //localhost
+      port: 5432,
+      password: 'suporte', //s1sadm1n
+      textCharset: 'latin1'
+      // sslContext: sslContext,
+      );
 
   // await con.connect();
 

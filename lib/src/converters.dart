@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:convert/convert.dart';
 
-import 'charcode/ascii.dart';
+import 'dependencies/charcode/ascii.dart';
 import 'exceptions.dart';
 import 'server_info.dart';
 import 'utils/utils.dart';

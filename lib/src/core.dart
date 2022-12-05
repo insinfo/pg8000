@@ -8,7 +8,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:pg8000/src/row_info.dart';
-import 'package:pg8000/src/sasl_scram/sasl_scram.dart';
+import 'package:pg8000/src/dependencies/sasl_scram/sasl_scram.dart';
 import 'package:pg8000/src/utils/utils.dart';
 
 import 'client_notice.dart';

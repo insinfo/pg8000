@@ -1,12 +1,11 @@
 import 'dart:collection';
 import 'dart:convert';
 
-//TODO re-implement based on https://github.com/dart-protocol/raw/blob/master/lib/src/raw_value.dart
 class Buffer {
   Buffer();
 
   int _position = 0;
-  final _queue = new Queue<List<int>>();
+  final _queue = Queue<List<int>>();
 
   int _bytesRead = 0;
   int get bytesRead => _bytesRead;
