@@ -217,6 +217,7 @@ List<int> unpack(String fmt, List<int> bytes, [int offset = 0]) {
 ///   b    | signed char | integer           | 1
 ///   q    | long long   | integer           | 8
 ///   Q    | unsigned long long |  integer   |  8
+/// esta é a versão mais lenta
 List<int> unpack2(String fmt, List<int> bytes, [int offset = 0]) {
   var decodedNum = <int>[];
   var buffer = ByteDataReader();
@@ -300,12 +301,17 @@ List<int> unpack3(String fmt, List<int> bytes, [int offset = 0]) {
 
 /// write char 1 byte
 List<int> c_pack(int val) {
-  return pack('c', [val]);
+  // return pack('c', [val]);
+  return [val];
 }
 
 /// read Byte
 List<int> c_unpack(List<int> bytes, [int offset = 0]) {
-  return unpack('c', bytes, offset);
+  //return unpack('c', bytes, offset);
+  if (offset != 0) {
+    return [bytes.first];
+  }
+  return [bytes.sublist(offset).first];
 }
 
 /// write Int32
@@ -313,64 +319,59 @@ List<int> c_unpack(List<int> bytes, [int offset = 0]) {
 /// e os converte em bytes usando o formato "i" int de 4 bytes (Int32)
 /// Minimum value of Int32: -2147483648
 /// Maximum value of Int32: 2147483647
-List<int> i_pack(int val) {
-  //return pack('i', [val]);
-  var bytes = <int>[];
-  //assert(val >= -2147483648 && val <= 2147483647);
+// List<int> i_pack(int val) {
+//   //return pack('i', [val]);
+//   var bytes = <int>[];
+//   //assert(val >= -2147483648 && val <= 2147483647);
+//   if (val < 0) val = 0x100000000 + val;
+//   int a = (val >> 24) & 0x000000FF;
+//   int b = (val >> 16) & 0x000000FF;
+//   int c = (val >> 8) & 0x000000FF;
+//   int d = val & 0x000000FF;
+//   //checar ordem
+//   bytes.add(a);
+//   bytes.add(b);
+//   bytes.add(c);
+//   bytes.add(d);
+//   return bytes;
+// }
 
-  if (val < 0) val = 0x100000000 + val;
+// /// read Int32
+// /// Minimum value of Int32: -2147483648
+// /// Maximum value of Int32: 2147483647
+// List<int> i_unpack(List<int> bytes, [int offset = 0]) {
+//   //return unpack('i', bytes, offset);
+//   var buffer = Buffer();
+//   if (offset == 0) {
+//     buffer.append(bytes);
+//   } else if (offset > 0) {
+//     var bits = bytes.sublist(offset);
+//     buffer.append(bits);
+//   } else {
+//     throw Exception('offset < 0');
+//   }
 
-  int a = (val >> 24) & 0x000000FF;
-  int b = (val >> 16) & 0x000000FF;
-  int c = (val >> 8) & 0x000000FF;
-  int d = val & 0x000000FF;
-  //checar ordem
+//   return [buffer.readInt32()];
+// }
 
-  bytes.add(a);
-  bytes.add(b);
-  bytes.add(c);
-  bytes.add(d);
-
-  return bytes;
-}
-
-/// read Int32
-/// Minimum value of Int32: -2147483648
-/// Maximum value of Int32: 2147483647
-List<int> i_unpack(List<int> bytes, [int offset = 0]) {
-  //return unpack('i', bytes, offset);
-  var buffer = Buffer();
-  if (offset == 0) {
-    buffer.append(bytes);
-  } else if (offset > 0) {
-    var bits = bytes.sublist(offset);
-    buffer.append(bits);
-  } else {
-    throw Exception('offset < 0');
-  }
-
-  return [buffer.readInt32()];
-}
-
-List<int> i_pack_fast(
+List<int> i_pack(
   int val, [
   Endian endian = Endian.big,
 ]) {
-  ByteData data = ByteData(4);
-  data.setInt32(0, val, endian);
-  return data.buffer.asUint8List();
-
-//   Uint8List int32bytes(int value) =>
-//     Uint8List(4)..buffer.asInt32List()[0] = value;
-
-// Uint8List int32BigEndianBytes(int value) =>
-//     Uint8List(4)..buffer.asByteData().setInt32(0, value, Endian.big);
+  //return pack('i', [val]);
+  // ByteData data = ByteData(4);
+  // data.setInt32(0, val, endian);
+  // return data.buffer.asUint8List();
+  final result = Uint8List(4)..buffer.asByteData().setInt32(0, val, endian);
+  return [...result]; //<int>[]..addAll(result);
 }
 
-List<int> i_unpack_fast(List<int> bytes, [int offset = 0]) {
-  //return unpack('i', bytes, offset);
-  ByteData data = ByteData.view(Uint8List.fromList(bytes).buffer);
-  return [data.getInt32(0)];
+List<int> i_unpack(List<int> bytes, [int offset = 0]) {
+  //return unpack2('i', bytes, offset);
+  // final data = ByteData.view(Uint8List.fromList(bytes).buffer);
+  // return [data.getInt32(offset)];
+  final result = Uint8List.fromList(bytes).buffer.asByteData().getInt32(offset);
+  return [result];
 }
 
 /// write Int16 short 2 bytes
@@ -381,35 +382,74 @@ List<int> h_pack(
   Endian endian = Endian.big,
 ]) {
   //return pack('h', [val]);
-  ByteData data = ByteData(2);
-  data.setInt16(0, val, endian);
-  return data.buffer.asUint8List();
+  // ByteData data = ByteData(2);
+  // data.setInt16(0, val, endian);
+  // return data.buffer.asUint8List();
+  final result = Uint8List(2)..buffer.asByteData().setInt16(0, val, endian);
+  return [...result]; //<int>[]..addAll(result);
 }
 
 /// read Int16 short 2 bytes
 List<int> h_unpack(List<int> bytes, [int offset = 0]) {
-  return unpack('h', bytes, offset);
+  //return unpack('h', bytes, offset);
+  final result = Uint8List.fromList(bytes).buffer.asByteData().getInt16(offset);
+  return [result];
 }
 
 /// write 2 Int32
-List<int> ii_pack(int val1, int val2) {
-  return pack('ii', [val1, val2]);
+List<int> ii_pack(
+  int val1,
+  int val2, [
+  Endian endian = Endian.big,
+]) {
+  //return pack('ii', [val1, val2]);
+  final list = Uint8List(8);
+  final byteData = list.buffer.asByteData();
+  byteData.setInt32(0, val1, endian);
+  byteData.setInt32(4, val2, endian);
+  return [...list]; //<int>[]..addAll(result);
 }
 
 /// read 2 Int32
 List<int> ii_unpack(List<int> bytes, [int offset = 0]) {
-  return unpack('ii', bytes, offset);
+  //return unpack3('ii', bytes, offset);
+  final list = Uint8List.fromList(bytes);
+  final byteData = list.buffer.asByteData();
+  return [byteData.getInt32(offset), byteData.getInt32(offset + 4)];
 }
 
 /// write Int32 Int16 | Int32 Int16 | Int32 Int16
 List<int> ihihih_pack(
-    int val1, int val2, int val3, int val4, int val5, int val6) {
-  return pack('ihihih', [val1, val2, val3, val4, val5, val6]);
+    int val1, int val2, int val3, int val4, int val5, int val6,
+    [Endian endian = Endian.big]) {
+  //return pack('ihihih', [val1, val2, val3, val4, val5, val6]);
+
+  final list = Uint8List(18);
+  final byteData = list.buffer.asByteData();
+  byteData.setInt32(0, val1, endian);
+  byteData.setInt16(4, val2, endian);
+  byteData.setInt32(6, val3, endian);
+  byteData.setInt16(10, val4, endian);
+  byteData.setInt32(12, val5, endian);
+  byteData.setInt16(16, val6, endian);
+
+  return [...list]; //<int>[]..addAll(result);
 }
 
 /// read Int32 Int16 | Int32 Int16 | Int32 Int16
 List<int> ihihih_unpack(List<int> bytes, [int offset = 0]) {
-  return unpack('ihihih', bytes, offset);
+  //return unpack('ihihih', bytes, offset);
+
+  final list = Uint8List.fromList(bytes);
+  final byteData = list.buffer.asByteData();
+  return [
+    byteData.getInt32(offset),
+    byteData.getInt16(offset + 4),
+    byteData.getInt32(offset + 6),
+    byteData.getInt16(offset + 10),
+    byteData.getInt32(offset + 12),
+    byteData.getInt16(offset + 16),
+  ];
 }
 
 /// write one byte and Int32

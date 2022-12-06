@@ -20,7 +20,7 @@ void main(List<String> args) async {
   // );
 
   var con = CoreConnection('sw.suporte', //usarioscram //postgres
-      database: 'teste', //'siamweb', //sistemas
+      database: 'siamweb', //'siamweb', //sistemas teste
       host: '10.0.0.25', //localhost
       port: 5432,
       password: 'suporte', //s1sadm1n
@@ -28,14 +28,14 @@ void main(List<String> args) async {
       // sslContext: sslContext,
       );
 
-  // await con.connect();
+  await con.connect();
 
   // //observacoes,resumo_assunto
-  // var res = await con.executeSimple('''select *
-  //     from protocolo.processo_historico
-  //     where ano_exercicio=2022 AND cod_processo=590 limit 1''').toList();
+  var res = await con.executeSimple('''select *
+      from protocolo.processo_historico
+      where ano_exercicio=2022 AND cod_processo=590 limit 1''').toList();
 
-  // print('main ${res.first.toColumnMap()}');
+  print('main ${res}');
 //   var res = await con.execute('''
 //   INSERT INTO teste_table (name) VALUES ('João')
 // ''');
@@ -158,16 +158,4 @@ void main(List<String> args) async {
   // });
 
   //await con.close();
-
-  var stopw = Stopwatch()..start();
-  var result;
-  for (var i = 0; i < 100000000; i++) {
-    result = i_pack_fast(21474830);
-    //result = i_pack(21474830);
-  }
-  stopw.stop();
-  print('result: $result');
-  print('time: ${stopw.elapsed}');
-
-  exit(0);
 }
