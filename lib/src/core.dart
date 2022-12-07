@@ -11,8 +11,10 @@ import 'package:pg8000/src/row_info.dart';
 import 'package:pg8000/src/dependencies/sasl_scram/sasl_scram.dart';
 import 'package:pg8000/src/utils/utils.dart';
 
+import 'authentication_request_type.dart';
 import 'client_notice.dart';
 import 'column_description.dart';
+import 'connection_settings.dart';
 import 'constants.dart';
 import 'converters.dart';
 import 'exceptions.dart';
@@ -34,16 +36,17 @@ class CoreConnection {
   String database;
   int port;
   List<int> passwordBytes;
-  dynamic source_address;
+  String sourceAddress;
   bool isUnixSocket = false;
   //SSLv3/TLS TLSv1.3
   SslContext sslContext;
-  dynamic timeout;
+
   bool tcpKeepalive;
   String applicationName;
   dynamic replication;
   // for SCRAM-SHA-256 auth
   ScramAuthenticator scramAuthenticator;
+  AuthenticationRequestType authenticationRequestType;
 
   /// The owner of the connection, or null if not available.
   ConnectionOwner owner;
@@ -132,19 +135,46 @@ class CoreConnection {
     this.database,
     this.port = 5432,
     this.password,
-    this.source_address,
+    this.sourceAddress = '',
     this.isUnixSocket = false,
     this.sslContext,
-    this.timeout,
+    this.connectionTimeout = const Duration(seconds: 180),
     this.tcpKeepalive = true,
     this.applicationName,
-    this.replication,
+    this.replication = null,
     this.connectionName,
     this.textCharset = 'utf8',
   }) {
     typeConverter =
         TypeConverter(textCharset, serverInfo, connectionName: connectionName);
     _init();
+  }
+
+  factory CoreConnection.fromSettings(ConnectionSettings settings) {
+    return CoreConnection(
+      settings.user,
+      host: settings.host,
+      database: settings.database,
+      port: settings.port,
+      password: settings.password,
+      sourceAddress: settings.sourceAddress,
+      isUnixSocket: settings.isUnixSocket,
+      sslContext: settings.sslContext,
+      connectionTimeout: settings.connectionTimeout,
+      tcpKeepalive: settings.tcpKeepalive,
+      applicationName: settings.applicationName,
+      replication: settings.replication,
+      connectionName: settings.connectionName,
+      textCharset: settings.textCharset,
+    );
+  }
+
+  /// Create Connection from uri
+  /// Example:  var uri = 'postgres://postgres:s1sadm1n@localhost:5432/sistemas';
+  /// var con = CoreConnection.fromUri(uri);
+  factory CoreConnection.fromUri(String uriString) {
+    var settings = ConnectionSettings.fromUri(uriString);
+    return CoreConnection.fromSettings(settings);
   }
 
   void _init() {
@@ -211,7 +241,7 @@ class CoreConnection {
         print('CoreConnection $e');
         throw PostgresqlException(
             """Can't create a connection to host $host and port $port 
-                    (timeout is $timeout and source_address is $source_address).""");
+                    (timeout is $connectionTimeout and source_address is $sourceAddress).""");
       }
     } else if (isUnixSocket == true) {
       //throw UnimplementedError('unix_sock not implemented');
@@ -219,7 +249,7 @@ class CoreConnection {
               InternetAddress(host, type: InternetAddressType.unix), port)
           .timeout(connectionTimeout);
     } else {
-      throw PostgresqlException("one of host or unix_sock must be provided");
+      throw PostgresqlException('one of host or unix_sock must be provided');
     }
 
     if (sslContext != null) {
@@ -234,6 +264,7 @@ class CoreConnection {
   }
 
   Future<SecureSocket> _connectSsl() async {
+    //print('_connectSsl');
     var future = Socket.connect(host, port, timeout: connectionTimeout);
     var completer = Completer<SecureSocket>();
 
@@ -408,7 +439,8 @@ class CoreConnection {
     }
 
     if (state == ConnectionState.closed) {
-      throw PostgresqlException('Connection is closed, cannot execute query.');
+      throw PostgresqlException('Connection is closed, cannot execute query.',
+          errorCode: 500);
     }
     query.state = QueryState.queued;
     _sendQueryQueue.addLast(query);
@@ -565,7 +597,7 @@ class CoreConnection {
       int msgType = _buffer.readByte();
       int length = _buffer.readInt32() - 4;
 
-      print('_readData code: ${pgCodeString(msgType)} $msgType');
+      // print('_readData code: ${pgCodeString(msgType)} $msgType');
       var messageBytes = _buffer.readBytes(length);
 
       switch (msgType) {
@@ -896,24 +928,26 @@ class CoreConnection {
         'Invalid connection state while authenticating.',
       );
     }
+    final authCode = i_unpack(data)[0];
+    authenticationRequestType = AuthenticationRequestType.fromCode(authCode);
 
-    var auth_code = i_unpack(data)[0];
-    //print('auth_code: $auth_code');
-    if (auth_code == 0) {
+    if (authenticationRequestType == AuthenticationRequestType.Ok) {
       state = ConnectionState.authenticated;
       return;
-    } else if (auth_code == 3) {
+    } else if (authenticationRequestType ==
+        AuthenticationRequestType.CleartextPassword) {
       if (this.password == null)
         throw PostgresqlException(
-            "server requesting password authentication, but no password was provided");
+            'server requesting cleartext password authentication, but no password was provided');
       this._send_message(PASSWORD, [...this.passwordBytes, NULL_BYTE]);
       await this._sock_flush();
     }
     //md5 AUTHENTICATION
-    else if (auth_code == 5) {
+    else if (authenticationRequestType ==
+        AuthenticationRequestType.MD5Password) {
       if (this.password == null) {
         throw PostgresqlException(
-            "server requesting MD5 password authentication, but no password  was provided");
+            'server requesting MD5 password authentication, but no password  was provided');
       }
       var salt = cccc_unpack(data, 4);
       //md5 message send to server
@@ -933,7 +967,7 @@ class CoreConnection {
       await this._sock_flush();
     }
     // AuthenticationSASL
-    else if (auth_code == 10) {
+    else if (authenticationRequestType == AuthenticationRequestType.SASL) {
       //print('AuthenticationSASL $auth_code');
 
       var dataPart = data.sublist(4, data.length - 2);
@@ -968,7 +1002,8 @@ class CoreConnection {
       //  SASLInitialResponse
       this._send_message(PASSWORD, saslInitialResponse);
       this._sock_flush();
-    } else if (auth_code == 11) {
+    } else if (authenticationRequestType ==
+        AuthenticationRequestType.SASLContinue) {
       // AuthenticationSASLContinue
 
       var msg = this.scramAuthenticator.handleMessage(
@@ -978,7 +1013,8 @@ class CoreConnection {
           );
       this._send_message(PASSWORD, msg);
       this._sock_flush();
-    } else if (auth_code == 12) {
+    } else if (authenticationRequestType ==
+        AuthenticationRequestType.SASLFinal) {
       // AuthenticationSASLFinal
 
       this.scramAuthenticator.handleMessage(
@@ -986,12 +1022,13 @@ class CoreConnection {
             // Append the bytes receiver from server
             Uint8List.fromList(data.sublist(4)),
           );
-    } else if ([2, 4, 6, 7, 8, 9].contains(auth_code))
+      //2=KerberosV5, 4=CryptPassword, 6=SCMCredential, 7=GSS, 8=GSSContinue, 9=SSPI
+    } else if ([2, 4, 6, 7, 8, 9].contains(authCode))
       throw PostgresqlException(
-          "Authentication method $auth_code not supported by pg8000.");
+          'Authentication method $authCode not supported.');
     else {
       throw PostgresqlException(
-          "Authentication method $auth_code not recognized by pg8000.");
+          'Authentication method $authCode not recognized.');
     }
   }
 
@@ -1114,7 +1151,8 @@ class CoreConnection {
         // if (keyM != null) {
         //   key = keyM;
         // }
-        map[key] = typeConverter.charsetDecode(bytes.sublist(1), textCharset);
+        map[key] = typeConverter.charsetDecode(
+            bytes.sublist(1), textCharset); //textCharset);
       }
     }
 

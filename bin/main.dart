@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:pg8000/src/core.dart';
@@ -10,32 +11,41 @@ void main(List<String> args) async {
 
   //var sslContext = SslContext.createDefaultContext();
 
-  // var con = CoreConnection(
-  //   'usarioscram', //usarioscram //postgres
-  //   database: 'sistemas', //sistemas
-  //   host: 'localhost', //localhost
-  //   port: 5432,
-  //   password: 's1sadm1n', //s1sadm1n
-  //   // sslContext: sslContext,
-  // );
+  var con = CoreConnection(
+    'usarioscram', //usarioscram //postgres
+    database: 'sistemas', //sistemas
+    host: 'localhost', //localhost
+    port: 5432,
+    password: 's1sadm1n', //s1sadm1n
+    // sslContext: sslContext,
+  );
 
-  var con = CoreConnection('sw.suporte', //usarioscram //postgres
-      database: 'siamweb', //'siamweb', //sistemas teste
-      host: '10.0.0.25', //localhost
-      port: 5432,
-      password: 'suporte', //s1sadm1n
-      textCharset: 'latin1'
-      // sslContext: sslContext,
-      );
+  // var con = CoreConnection('sw.suporte', //usarioscram //postgres
+  //     database: 'siamweb', //'siamweb', //sistemas teste
+  //     host: '10.0.0.25', //localhost
+  //     port: 5432,
+  //     password: 'suporte', //s1sadm1n
+  //     textCharset: 'latin1'
+  //     // sslContext: sslContext,
+  //     );
 
   await con.connect();
 
-  // //observacoes,resumo_assunto
-  var res = await con.executeSimple('''select *
-      from protocolo.processo_historico
-      where ano_exercicio=2022 AND cod_processo=590 limit 1''').toList();
+  Timer.periodic(Duration(milliseconds: 1000), (t) async {
+    try {
+      var result = await con.executeSimple('select 1').toList();
+      //print('result: $result');
+    } catch (e) {
+      print('result e: ${e}');
+    }
+  });
 
-  print('main ${res}');
+  // // //observacoes,resumo_assunto
+  // var res = await con.executeSimple('''select *
+  //     from protocolo.processo_historico
+  //     where ano_exercicio=2022 AND cod_processo=590 limit 1''').toList();
+
+  // print('main ${res}');
 //   var res = await con.execute('''
 //   INSERT INTO teste_table (name) VALUES ('João')
 // ''');

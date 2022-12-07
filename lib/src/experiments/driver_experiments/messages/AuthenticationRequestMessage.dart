@@ -1,4 +1,4 @@
-import '../authentication_request_type.dart';
+import '../../../authentication_request_type.dart';
 import 'server_message.dart';
 
 class AuthenticationRequestMessage {
