@@ -19,25 +19,25 @@ this is still experimental, that said, I believe it already works in several sce
 ### Currently supports:
 
 #### Authentication:
-    - [x] CleartextPassword
-    - [x] MD5Password
-    - [x] SASL SCRAM-SHA-256
+- [x] CleartextPassword
+- [x] MD5Password
+- [x] SASL SCRAM-SHA-256
 
 #### Connection:
-    - [x] No SSL
-    - [x] With SSL
+- [x] No SSL
+- [x] With SSL
 
 #### Transaction:
-    - [x] PHP PDO style
-    - [x] Closure
+- [x] PHP PDO style
+- [x] Closure
 
 #### Notices And Notifications:
-    - [x] Working
+- [x] Working
 
 #### Charset supported:
-    - [x] latin1
-    - [x] utf8
-    - [x] ascii
+- [x] latin1
+- [x] utf8
+- [x] ascii
 
 ## creating a connection With SSL and executing a simple select
 ```dart
