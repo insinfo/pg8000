@@ -39,7 +39,7 @@ this is still experimental, that said, I believe it already works in several sce
 - [x] utf8
 - [x] ascii
 
-## creating a connection With SSL and executing a simple select
+## Creating a connection with SSL and executing a simple select
 ```dart
     var sslContext = SslContext.createDefaultContext();
 
@@ -61,7 +61,7 @@ this is still experimental, that said, I believe it already works in several sce
 
 ```
 
-## creating a connection and executing a simple select
+## Creating a connection and executing a simple select
 ```dart
     var con = CoreConnection(
         'user',
@@ -80,7 +80,7 @@ this is still experimental, that said, I believe it already works in several sce
 
 ```
 
-## create a connection and execute a PHP PDO style transaction
+## Create a connection and execute a PHP PDO style transaction
 ```dart
     var con = CoreConnection(
         'user',
@@ -105,7 +105,7 @@ this is still experimental, that said, I believe it already works in several sce
 
 ```
 
-## create a connection and perform a transaction in a closure
+## Create a connection and perform a transaction in a closure
 ```dart
     var con = CoreConnection(
         'user',
@@ -126,7 +126,7 @@ this is still experimental, that said, I believe it already works in several sce
 
 ```
 
-## executing a unnamed prepared statement
+## Executing a unnamed prepared statement
 ```dart
     var con = CoreConnection(
         'user',
@@ -149,7 +149,7 @@ this is still experimental, that said, I believe it already works in several sce
 
 ```
 
-## executing a named prepared statement
+## Executing a named prepared statement
 ```dart
     var con = CoreConnection(
         'user',
