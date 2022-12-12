@@ -97,6 +97,7 @@ class Utils {
     }
     Timer.run(() {}); // Enusre there is at least one message.
     while (!futureCompleted && (error == null)) {
+      // ignore: unused_local_variable
       Duration remaining;
       if (timeout != null) {
         if (s.elapsed >= timeout) {
@@ -229,7 +230,7 @@ class Utils {
   static Iterable<List<T>> splitAround<T>(List<T> myList,
       bool Function(T) startSplit, bool Function(T) endSplit) sync* {
     List<T> list = [];
-    bool first = true;
+
     for (var element in myList) {
       if (list != null) {
         if (startSplit(element)) {

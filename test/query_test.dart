@@ -1,5 +1,5 @@
 import 'package:pg8000/src/core.dart';
-import 'package:pg8000/src/exceptions.dart';
+
 import 'package:test/test.dart';
 
 void main() {

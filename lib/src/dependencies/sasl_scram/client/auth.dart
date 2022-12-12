@@ -16,7 +16,7 @@ class UsernamePasswordCredential {
   UsernamePasswordCredential({this.username, this.password});
 
   String username;
-  String password; // TODO: Encrypt this to secureString
+  String password;
 }
 
 abstract class RandomStringGenerator {

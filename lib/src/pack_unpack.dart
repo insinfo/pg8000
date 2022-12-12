@@ -5,8 +5,6 @@ import 'dependencies/buffer_terrier/raw_reader.dart';
 import 'dependencies/buffer_terrier/raw_writer.dart';
 import 'utils/buffer.dart';
 
-//TODO re-implement based on https://github.com/dart-protocol/raw/blob/master/lib/src/raw_value.dart
-// https://github.com/dart-protocol/raw/blob/master/lib/src/raw_reader.dart
 /// binary data pack and unpack
 ///
 ///

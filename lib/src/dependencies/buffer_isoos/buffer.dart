@@ -201,7 +201,6 @@ class ByteDataWriter {
   }
 
   void write(List<int> bytes, {bool copy = false}) {
-    // TODO: may add to current _data buffer
     _flush();
     _bb.add(bytes, copy: copy);
   }

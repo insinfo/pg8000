@@ -31,14 +31,8 @@ class ScramMechanism extends SaslMechanism {
       username = 'n=*';
     }
 
-    /*   List<int> cNonce;
-    final rnd = Random();
-    cNonce = List<int>.generate(
-        SaslAuthenticator.DefaultNonceLength, (i) => rnd.nextInt(256));
-    final r = cNonce; */
-
-    final r = randomStringGenerator.generate(SaslAuthenticator
-        .DefaultNonceLength); // TODO may want to use above method and exclude ","
+    final r =
+        randomStringGenerator.generate(SaslAuthenticator.DefaultNonceLength);
 
     final nonce = 'r=$r';
 

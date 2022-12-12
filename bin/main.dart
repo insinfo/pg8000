@@ -1,9 +1,4 @@
-import 'dart:async';
-import 'dart:io';
-
 import 'package:pg8000/src/core.dart';
-import 'package:pg8000/src/exceptions.dart';
-import 'package:pg8000/src/pack_unpack.dart';
 
 void main(List<String> args) async {
   // user md5 = postgres
