@@ -15,6 +15,7 @@ this is still experimental, that said, I believe it already works in several sce
 - [x] https://github.com/will/crystal-pg
 - [x] https://github.com/lib/pq
 
+I'm only able to do this implementation thanks to several open source projects, thanks to the entire open source community for creating all these tools.
 
 ### Currently supports:
 
