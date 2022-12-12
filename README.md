@@ -149,7 +149,7 @@ this is still experimental, that said, I believe it already works in several sce
 
 ```
 
-## Executing a named prepared statement
+## Executing a named prepared statement like PDO
 ```dart
     var con = CoreConnection(
         'user',
@@ -160,11 +160,16 @@ this is still experimental, that said, I believe it already works in several sce
     );
 
     await con.connect();
+
     var query = await con.prepareStatement(r'select * from people limit $1');
+
     query.addPreparedParams([1]);   
+
     var items = await con.executeNamed(query).toList();
+
     print('result: $items');
     print('sql: ${query.sql}');
+
     //result: [[1, Alex, 2021-12-31 21:00:00.000]]
     //sql: select * from crud_teste.people limit $1
     // server log:
