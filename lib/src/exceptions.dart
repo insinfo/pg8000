@@ -2,7 +2,10 @@ import 'server_notice.dart';
 
 class PostgresqlException implements Exception {
   PostgresqlException(this.message,
-      {this.connectionName, this.serverMessage, this.errorCode});
+      {this.connectionName,
+      this.serverMessage,
+      this.errorCode,
+      this.serverErrorCode});
 
   final String message;
 
@@ -13,6 +16,8 @@ class PostgresqlException implements Exception {
 
   /// Note may be null.
   final Object errorCode;
+
+  final dynamic serverErrorCode;
 
   @override
   String toString() {

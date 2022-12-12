@@ -5,7 +5,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:crypto/crypto.dart';
-import 'package:saslprep/saslprep.dart';
+import '../../../../saslprep/saslprep_export.dart';
 
 import '../../../sasl_scram_exception.dart';
 import '../../../utils/parsing.dart';

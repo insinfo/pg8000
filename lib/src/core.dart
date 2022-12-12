@@ -54,7 +54,7 @@ class CoreConnection {
   String connectionName;
   int connectionId = 0;
 
-  final _connected = Completer<CoreConnection>();
+  Completer<CoreConnection> _connected; // = Completer<CoreConnection>();
 
   // PreparedStatementState _preparedStatementState = PreparedStatementState.none;
 
@@ -96,6 +96,8 @@ class CoreConnection {
 
   Duration connectionTimeout = Duration(seconds: 180);
 
+  ServerNotice lastServerNotice;
+
   //Future<dynamic> Function() _flush;
   //void Function(List<int> d) _write;
 
@@ -106,7 +108,14 @@ class CoreConnection {
 
   List<int> _transaction_status;
 
-  ConnectionState state = ConnectionState.notConnected;
+  ConnectionState _connectionState = ConnectionState.notConnected;
+
+  ConnectionState get connectionState => _connectionState;
+
+  /// experimental: allow reconnection attempt in case of posgresql server restart
+  bool allowAttemptToReconnect = false;
+  int _tryReconnectCount = 0;
+  int tryReconnectLimit = 5;
 
   TransactionState transactionState = TransactionState.unknown;
 
@@ -144,6 +153,7 @@ class CoreConnection {
     this.replication = null,
     this.connectionName,
     this.textCharset = 'utf8',
+    this.allowAttemptToReconnect = false,
   }) {
     typeConverter =
         TypeConverter(textCharset, serverInfo, connectionName: connectionName);
@@ -180,7 +190,8 @@ class CoreConnection {
   void _init() {
     if (user == null) {
       throw PostgresqlException(
-          "The 'user' connection parameter cannot be null");
+          "The 'user' connection parameter cannot be null",
+          connectionName: connectionName);
     }
 
     if (connectionName == null) {
@@ -226,7 +237,14 @@ class CoreConnection {
     _socket.setRawOption(option);
   }
 
-  Future<CoreConnection> connect() async {
+  Future<CoreConnection> connect({int delayBeforeConnect}) async {
+    _connectionState = ConnectionState.socketConnecting;
+    print('Connecting...');
+    if (delayBeforeConnect != null) {
+      await Future.delayed(Duration(seconds: delayBeforeConnect));
+    }
+
+    _connected = Completer<CoreConnection>();
     if (isUnixSocket == false && host != null) {
       try {
         // remover waitFor no futuro
@@ -235,13 +253,17 @@ class CoreConnection {
         if (tcpKeepalive == true) {
           _setKeepAlive();
         }
-
-        state = ConnectionState.socketConnected;
       } catch (e) {
-        print('CoreConnection $e');
-        throw PostgresqlException(
-            """Can't create a connection to host $host and port $port 
-                    (timeout is $connectionTimeout and source_address is $sourceAddress).""");
+        //tenta se reconectar
+        if (_tryReconnectCount <= tryReconnectLimit &&
+            allowAttemptToReconnect == true) {
+          await tryReconnect();
+        } else {
+          throw PostgresqlException(
+              """Can't create a connection to host $host and port $port 
+                    (timeout is: $connectionTimeout and sourceAddress is: $sourceAddress).""",
+              connectionName: connectionName);
+        }
       }
     } else if (isUnixSocket == true) {
       //throw UnimplementedError('unix_sock not implemented');
@@ -249,16 +271,22 @@ class CoreConnection {
               InternetAddress(host, type: InternetAddressType.unix), port)
           .timeout(connectionTimeout);
     } else {
-      throw PostgresqlException('one of host or unix_sock must be provided');
+      throw PostgresqlException('one of host or unix_sock must be provided',
+          connectionName: connectionName);
     }
 
     if (sslContext != null) {
       _socket = await _connectSsl();
     }
 
+    _connectionState = ConnectionState.socketConnected;
+    _tryReconnectCount = 0;
+
     this._socket.listen(_readData,
         onError: _handleSocketError, onDone: _handleSocketClosed);
     _sendStartupMessage();
+
+    print('Connected');
 
     return _connected.future;
   }
@@ -275,6 +303,7 @@ class CoreConnection {
           completer.completeError(PostgresqlException(
             'This postgresql server is not configured to support SSL '
             'connections.',
+            connectionName: connectionName,
           ));
         } else {
           SecurityContext();
@@ -326,6 +355,7 @@ class CoreConnection {
       var query = Query(statement);
       query.state = QueryState.init;
       query.queryType = QueryType.simple;
+      // print('call executeSimple: $statement');
       _enqueueQuery(query);
       return query.stream;
     } catch (ex, st) {
@@ -409,7 +439,34 @@ class CoreConnection {
     if (transaction == _currentTransaction) _currentTransaction = null;
   }
 
-  void _enqueueTransaction(TransactionContext transaction) {
+  Future<T> runInTransaction<T>(
+      Future<T> operation(TransactionContext ctx)) async {
+    final transa = await beginTransaction();
+    try {
+      final result = await operation(transa);
+      await commit(transa);
+      return result;
+    } catch (_) {
+      await rollBack(transa);
+      rethrow;
+    }
+  }
+
+  Future<void> _enqueueTransaction(TransactionContext transaction) async {
+    if (_connectionState == ConnectionState.closed) {
+      if (_tryReconnectCount <= tryReconnectLimit &&
+          allowAttemptToReconnect == true) {
+        await tryReconnect();
+      } else {
+        throw PostgresqlException(
+            'Connection is closed, cannot execute transaction.',
+            errorCode: 500,
+            serverMessage: lastServerNotice,
+            serverErrorCode: lastServerNotice.code,
+            connectionName: connectionName);
+      }
+    }
+
     _transactionQueue.addLast(transaction);
     Timer.run(_processTransactionQueue);
   }
@@ -423,13 +480,17 @@ class CoreConnection {
       print('_processTransactionQueue _currentTransaction != null');
       return;
     }
+    if (_connectionState != ConnectionState.idle) {
+      print('_processTransactionQueue state != ConnectionState.idle');
+      return;
+    }
     _currentTransaction = _transactionQueue.removeFirst();
-    print('_processTransactionQueue $_currentTransaction');
+    //print('_processTransactionQueue $_currentTransaction');
     Timer.run(_processSendQueryQueue);
   }
 
   /// coloca a query na fila
-  void _enqueueQuery(Query query) {
+  Future<void> _enqueueQuery(Query query) async {
     if (query.sql == '') {
       throw PostgresqlException('SQL query is null or empty.');
     }
@@ -438,38 +499,67 @@ class CoreConnection {
       throw PostgresqlException('Sql query contains a null character.');
     }
 
-    if (state == ConnectionState.closed) {
-      throw PostgresqlException('Connection is closed, cannot execute query.',
-          errorCode: 500);
+    if (_connectionState == ConnectionState.closed) {
+      //tenta se reconectar
+      if (_tryReconnectCount <= tryReconnectLimit &&
+          allowAttemptToReconnect == true) {
+        await tryReconnect();
+      } else {
+        throw PostgresqlException('Connection is closed, cannot execute query.',
+            errorCode: 500,
+            serverMessage: lastServerNotice,
+            connectionName: connectionName,
+            serverErrorCode: lastServerNotice.code);
+      }
     }
+    print('add Query ');
     query.state = QueryState.queued;
     _sendQueryQueue.addLast(query);
     Timer.run(_processSendQueryQueue);
+  }
+
+  Future<void> tryReconnect() async {
+    if (_connectionState == ConnectionState.socketConnecting) {
+      print(
+          'tryReconnect: não tenta reconectar pois esta fazendo conexão agora');
+      return;
+    }
+    if (_tryReconnectCount > tryReconnectLimit) {
+      print('tryReconnect: limit excedido');
+      return;
+    }
+
+    _tryReconnectCount++;
+    // tryReconnectLimit
+    print('tryReconnect: tentando se reconectar ');
+    await connect(delayBeforeConnect: 1);
   }
 
   /// processa a fila
   void _processSendQueryQueue() async {
     var queryQueue = _sendQueryQueue;
     if (_currentTransaction != null) {
-      print('_processSendQueryQueue in transaction');
+      //print('_processSendQueryQueue in transaction');
       queryQueue = _currentTransaction.sendQueryQueue;
     }
 
     if (queryQueue.isEmpty) {
-      print('_processSendQueryQueue query queue empty');
+      //print('_processSendQueryQueue query queue empty');
       return;
     }
     if (_query != null) {
-      print('_processSendQueryQueue _query != null');
+      //print('_processSendQueryQueue _query != null');
       return;
     }
-    if (state == ConnectionState.closed) {
-      print('_processSendQueryQueue state == ConnectionState.closes');
+    if (_connectionState != ConnectionState.idle) {
+      //print('_processSendQueryQueue state != ConnectionState.idle');
       return;
     }
-    assert(state == ConnectionState.idle);
-    final query = _query = queryQueue.removeFirst();
 
+    //print('_processSendQueryQueue _connectionState: $_connectionState}');
+    //assert(_connectionState == ConnectionState.idle);
+    _query = queryQueue.removeFirst();
+    final query = _query;
     query.state = QueryState.busy;
 
     if (query.queryType == QueryType.simple) {
@@ -481,9 +571,10 @@ class CoreConnection {
     } else if (query.queryType == QueryType.namedStatement) {
       await _sendExecuteNamedStatement(query);
     }
-    state = ConnectionState.busy;
+    _connectionState = ConnectionState.busy;
     query.state = QueryState.busy;
     transactionState = TransactionState.unknown;
+    //print('_processSendQueryQueue: ${query.sql}');
   }
 
   Future<dynamic> _sendExecuteSimpleStatement(Query query) async {
@@ -543,7 +634,8 @@ class CoreConnection {
     try {
       return this._socket.flush();
     } catch (e) {
-      throw PostgresqlException("_sock_flush network error $e");
+      throw PostgresqlException("_sock_flush network error $e",
+          connectionName: connectionName);
     }
   }
 
@@ -552,7 +644,8 @@ class CoreConnection {
     try {
       return this._socket.add(data);
     } catch (e, s) {
-      throw PostgresqlException("_sock_write network error $e $s");
+      throw PostgresqlException("_sock_write network error $e $s",
+          connectionName: connectionName);
     }
   }
 
@@ -580,24 +673,24 @@ class CoreConnection {
     this._sock_write(i_pack(Utils.len(val) + 4));
     this._sock_write(val);
     await _sock_flush();
-    state = ConnectionState.authenticating;
+    _connectionState = ConnectionState.authenticating;
   }
 
   /// ler dados do Socket
   /// loop
   void _readData(List<int> socketData) async {
-    if (state == ConnectionState.closed) {
+    if (_connectionState == ConnectionState.closed) {
       return;
     }
     _buffer.append(socketData);
 
-    while (state != ConnectionState.closed) {
+    while (_connectionState != ConnectionState.closed) {
       if (_buffer.bytesAvailable < 5) return; // Wait for more data.
 
       int msgType = _buffer.readByte();
       int length = _buffer.readInt32() - 4;
 
-      // print('_readData code: ${pgCodeString(msgType)} $msgType');
+      print('_readData code: ${pgCodeString(msgType)} $msgType');
       var messageBytes = _buffer.readBytes(length);
 
       switch (msgType) {
@@ -687,15 +780,15 @@ class CoreConnection {
         transactionState = TransactionState.error;
       }
 
-      var was = state;
-      state = ConnectionState.idle;
+      var was = _connectionState;
+      _connectionState = ConnectionState.idle;
 
       if (was == ConnectionState.authenticated) {
         hasConnected = true;
         _connected.complete(this);
       }
 
-      print('handle_READY_FOR_QUERY ${_query?.queryType} ${_query?.state}');
+      //print('handle_READY_FOR_QUERY ${_query?.queryType} ${_query?.state}');
 
       //fix async call
       if (_query?.queryType == QueryType.prepareStatement) {
@@ -711,14 +804,14 @@ class CoreConnection {
     } else {
       _destroy();
       throw PostgresqlException(
-        'Unknown ReadyForQuery transaction status: ${Utils.itoa(c)}.',
-      );
+          'Unknown ReadyForQuery transaction status: ${Utils.itoa(c)}.',
+          connectionName: connectionName);
     }
   }
 
   void _handle_ROW_DESCRIPTION(List<int> data) {
     //print('handle_ROW_DESCRIPTION ');
-    state = ConnectionState.streaming;
+    _connectionState = ConnectionState.streaming;
     var count = h_unpack(data)[0];
     var idx = 2;
 
@@ -818,7 +911,7 @@ class CoreConnection {
     //query.commandIndex++;
     query.rowsAffected = rowsAffected;
 
-    print("handle_COMMAND_COMPLETE _query done");
+    // print("handle_COMMAND_COMPLETE _query done");
   }
 
   /// [statement_name_bin] name statement bytes
@@ -883,7 +976,8 @@ class CoreConnection {
       this._sock_write(i_pack(Utils.len(bytes) + 4));
       this._sock_write(bytes);
     } catch (e) {
-      throw PostgresqlException("_send_message connection is closed $e");
+      throw PostgresqlException("_send_message connection is closed $e",
+          connectionName: connectionName);
     }
   }
 
@@ -923,22 +1017,23 @@ class CoreConnection {
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
     //print('handle_AUTHENTICATION_REQUEST');
 
-    if (state != ConnectionState.authenticating) {
+    if (_connectionState != ConnectionState.authenticating) {
       throw PostgresqlException(
-        'Invalid connection state while authenticating.',
-      );
+          'Invalid connection state while authenticating.',
+          connectionName: connectionName);
     }
     final authCode = i_unpack(data)[0];
     authenticationRequestType = AuthenticationRequestType.fromCode(authCode);
 
     if (authenticationRequestType == AuthenticationRequestType.Ok) {
-      state = ConnectionState.authenticated;
+      _connectionState = ConnectionState.authenticated;
       return;
     } else if (authenticationRequestType ==
         AuthenticationRequestType.CleartextPassword) {
       if (this.password == null)
         throw PostgresqlException(
-            'server requesting cleartext password authentication, but no password was provided');
+            'server requesting cleartext password authentication, but no password was provided',
+            connectionName: connectionName);
       this._send_message(PASSWORD, [...this.passwordBytes, NULL_BYTE]);
       await this._sock_flush();
     }
@@ -947,7 +1042,8 @@ class CoreConnection {
         AuthenticationRequestType.MD5Password) {
       if (this.password == null) {
         throw PostgresqlException(
-            'server requesting MD5 password authentication, but no password  was provided');
+            'server requesting MD5 password authentication, but no password  was provided',
+            connectionName: connectionName);
       }
       var salt = cccc_unpack(data, 4);
       //md5 message send to server
@@ -1025,10 +1121,12 @@ class CoreConnection {
       //2=KerberosV5, 4=CryptPassword, 6=SCMCredential, 7=GSS, 8=GSSContinue, 9=SSPI
     } else if ([2, 4, 6, 7, 8, 9].contains(authCode))
       throw PostgresqlException(
-          'Authentication method $authCode not supported.');
+          'Authentication method $authCode not supported.',
+          connectionName: connectionName);
     else {
       throw PostgresqlException(
-          'Authentication method $authCode not recognized.');
+          'Authentication method $authCode not recognized.',
+          connectionName: connectionName);
     }
   }
 
@@ -1085,7 +1183,7 @@ class CoreConnection {
   void _handleSocketError(dynamic error, {bool closed = false}) {
     print('_handleSocketError $error');
 
-    if (state == ConnectionState.closed) {
+    if (_connectionState == ConnectionState.closed) {
       _notices.add(ClientNotice(
           isError: false,
           severity: 'WARNING',
@@ -1099,12 +1197,14 @@ class CoreConnection {
     var msg = closed ? 'Socket closed unexpectedly.' : 'Socket error.';
 
     if (!hasConnected) {
-      _connected.completeError(PostgresqlException(msg, errorCode: error));
+      _connected.completeError(PostgresqlException(msg,
+          errorCode: error, connectionName: connectionName));
     } else {
       final query = _query;
       if (query != null) {
         query.state = QueryState.done;
-        query.addError(PostgresqlException(msg, errorCode: error));
+        query.addError(PostgresqlException(msg,
+            errorCode: error, connectionName: connectionName));
       } else {
         _notices.add(ClientNotice(
             isError: true,
@@ -1114,11 +1214,15 @@ class CoreConnection {
             exception: error));
       }
     }
+
+    //isaque add 12/12/2022
+    _query = null;
+    print('_handleSocketError _query = null');
   }
 
   void _handleSocketClosed() {
     print('_handleSocketClosed');
-    if (state != ConnectionState.closed) {
+    if (_connectionState != ConnectionState.closed) {
       _handleSocketError(null, closed: true);
     }
   }
@@ -1157,20 +1261,23 @@ class CoreConnection {
     }
 
     var msg = ServerNotice(true, map, connectionName);
+    lastServerNotice = msg;
 
     var ex = PostgresqlException(
       msg.message,
       connectionName: connectionName,
       serverMessage: msg,
       errorCode: msg.code,
+      serverErrorCode: msg.code,
     );
 
     print('handle_ERROR_RESPONSE $map ');
 
     if (!hasConnected) {
-      state = ConnectionState.closed;
+      _connectionState = ConnectionState.closed;
       this._socket.destroy();
       _connected.completeError(ex);
+      //hasConnected = false;
     } else {
       final query = _query;
       if (query != null) {
@@ -1186,18 +1293,21 @@ class CoreConnection {
         if (ow != null)
           ow.destroy();
         else {
-          state = ConnectionState.closed;
+          _connectionState = ConnectionState.closed;
           _socket.destroy();
         }
       }
     }
+    //isaque add 12/12/2022
+    _query = null;
+    print('_handle_ERROR_RESPONSE _query = null');
   }
 
   Future<void> close() async {
-    if (state == ConnectionState.closed) return;
+    if (_connectionState == ConnectionState.closed) return;
 
-    state = ConnectionState.closed;
-
+    _connectionState = ConnectionState.closed;
+    hasConnected = false;
     // If a query is in progress then send an error and close the result stream.
     final query = _query;
     if (query != null) {
@@ -1212,7 +1322,8 @@ class CoreConnection {
     }
 
     if (_socket == null) {
-      throw PostgresqlException("connection is closed");
+      throw PostgresqlException("connection is closed",
+          connectionName: connectionName);
     }
 
     //send _MSG_TERMINATE
@@ -1236,7 +1347,9 @@ class CoreConnection {
   }
 
   void _destroy() {
-    state = ConnectionState.closed;
+    print('_destroy');
+    hasConnected = false;
+    _connectionState = ConnectionState.closed;
     this._socket.destroy();
     Timer.run(_notices.close);
     Timer.run(_notifications.close);

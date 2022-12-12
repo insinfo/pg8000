@@ -8,8 +8,14 @@ class ConnectionState {
 
   static const ConnectionState notConnected =
       const ConnectionState('notConnected');
+
+  /// starting connection
+  static const ConnectionState socketConnecting =
+      const ConnectionState('socketConnecting');
+
   static const ConnectionState socketConnected =
       const ConnectionState('socketConnected');
+
   static const ConnectionState authenticating =
       const ConnectionState('authenticating');
   static const ConnectionState authenticated =

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:pg8000/src/core.dart';
+import 'package:pg8000/src/exceptions.dart';
 import 'package:pg8000/src/pack_unpack.dart';
 
 void main(List<String> args) async {
@@ -17,12 +18,13 @@ void main(List<String> args) async {
     host: 'localhost', //localhost
     port: 5432,
     password: 's1sadm1n', //s1sadm1n
+    allowAttemptToReconnect: true,
     // sslContext: sslContext,
   );
 
   // var con = CoreConnection('sw.suporte', //usarioscram //postgres
   //     database: 'siamweb', //'siamweb', //sistemas teste
-  //     host: '10.0.0.25', //localhost
+  //     host: '192.168.66.4', //localhost 10.0.0.25
   //     port: 5432,
   //     password: 'suporte', //s1sadm1n
   //     textCharset: 'latin1'
@@ -31,14 +33,31 @@ void main(List<String> args) async {
 
   await con.connect();
 
-  Timer.periodic(Duration(milliseconds: 1000), (t) async {
-    try {
-      var result = await con.executeSimple('select 1').toList();
-      //print('result: $result');
-    } catch (e) {
-      print('result e: ${e}');
-    }
-  });
+  // var count = 0;
+  // Timer.periodic(Duration(milliseconds: 2000), (t) async {
+  //   try {
+  //     var result = await con.executeSimple('select $count').toList();
+  //     print('result: $result');
+  //   } on PostgresqlException catch (e, s) {
+  //     print('PostgresqlException e: ${e} ');
+  //   } catch (e) {
+  //     print('result e: ${e}');
+  //   }
+  //   count++;
+  // });
+
+  // var count2 = 0;
+  // Timer.periodic(Duration(milliseconds: 2000), (t) async {
+  //   try {
+  //     var result = await con.executeSimple("select 'abc'").toList();
+  //     print('result letra: $result');
+  //   } on PostgresqlException catch (e, s) {
+  //     print('PostgresqlException e: ${e} ');
+  //   } catch (e) {
+  //     print('result e: ${e}');
+  //   }
+  //   count2++;
+  // });
 
   // // //observacoes,resumo_assunto
   // var res = await con.executeSimple('''select *
@@ -66,32 +85,47 @@ void main(List<String> args) async {
   //   print('$event');
   // });
 
-  //await con.execute('LISTEN "db_change_event"');
+  // await con.execute('LISTEN "db_change_event"');
+  // Timer.periodic(Duration(seconds: 2), (t) async {
+  //   await con.execute("NOTIFY db_change_event, 'This is the payload'");
+  // });
 
-  //await con.execute("NOTIFY db_change_event, 'This is the payload'");
+  // Timer.periodic(Duration(milliseconds: 3000), (t) async {
+  //   // final transa = await con.beginTransaction();
+  //   // try {
+  //   //   var re = await transa.executeUnnamed(
+  //   //       r"""INSERT INTO "crud_teste"."pessoas_cursos" ("idPessoa", "idCurso") VALUES ($1, $2) """,
+  //   //       [10, 3]).toList();
+  //   //   print('periodic: $re');
+  //   //   await con.commit(transa);
+  //   // } catch (e) {
+  //   //   print('catch (e) $e');
+  //   //   await con.rollBack(transa);
+  //   // }
 
-  // Timer.periodic(Duration(milliseconds: 1000), (t) async {
-  // final transa = await con.beginTransaction();
-  // try {
-  //   await transa.executeUnnamed(
-  //       r"""INSERT INTO "crud_teste"."pessoas_cursos" ("idPessoa", "idCurso") VALUES ($1, $2) """,
-  //       [10, 3]).toList();
-  //   await con.commit(transa);
-  // } catch (e) {
-  //   print('catch (e) $e');
-  //   await con.rollBack(transa);
-  // }
+  //   await con.runInTransaction((ctx) async {
+  //     return await ctx.executeUnnamed(
+  //         r"""INSERT INTO "crud_teste"."pessoas_cursos" ("idPessoa", "idCurso") VALUES ($1, $2) """,
+  //         [10, 3]).toList();
+  //   });
+  //   print('periodic1 fim');
   // });
 
   // Timer.periodic(Duration(milliseconds: 2000), (t) async {
-  //   final transa = await con.beginTransaction();
-  //   try {
-  //     await transa.executeSimple(
-  //         """INSERT INTO "crud_teste"."pessoas" ("nome", "dataCadastro", "cpf") VALUES ('Alex', '2022-11-30 16:22:03', '171') returning id""").toList();
-  //     await con.commit(transa);
-  //   } catch (e) {
-  //     await con.rollBack(transa);
-  //   }
+  // final transa = await con.beginTransaction();
+  // try {
+  //   await transa.executeSimple(
+  //       """INSERT INTO "crud_teste"."pessoas" ("nome", "dataCadastro", "cpf") VALUES ('Alex', '2022-11-30 16:22:03', '171') returning id""").toList();
+  //   await con.commit(transa);
+  // } catch (e) {
+  //   await con.rollBack(transa);
+  // }
+
+  // await con.runInTransaction((ctx) async {
+  //   return ctx.executeSimple(
+  //       """INSERT INTO "crud_teste"."pessoas" ("nome", "dataCadastro", "cpf") VALUES ('Alex', '2022-11-30 16:22:03', '171') returning id""").toList();
+  // });
+  //   print('periodic2 fim');
   // });
 
   // Timer.periodic(Duration(milliseconds: 1000), (t) async {
@@ -118,12 +152,12 @@ void main(List<String> args) async {
   //   }
   // });
   // var query =
-  //     await con.prepare_statement('select * from crud_teste.pessoas limit \$1');
+  //     await con.prepareStatement('select * from crud_teste.people limit \$1');
   // query.addPreparedParams([1]);
   // print('fim prepare_statement');
-  // var items = await con.execute_named(query).toList();
-  // print('fim execute_named $items');
-  // print('fim execute_named ${query.sql}');
+  // var items = await con.executeNamed(query).toList();
+  // print('result: $items');
+  // print('sql: ${query.sql}');
 
   // var count = 0;
   // Timer.periodic(Duration(seconds: 4), (t) async {

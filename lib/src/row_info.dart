@@ -13,6 +13,9 @@ class Row extends ListBase {
 
   Row(this._columnValues, this._columns);
 
+  /// return List of Column Description
+  List<ColumnDescription> get columnsInfo => _columns;
+
   @override
   String toString() => _columnValues.toString();
 

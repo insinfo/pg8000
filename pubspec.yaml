@@ -2,24 +2,22 @@ name: pg8000
 version: 1.0.0
 description: >
   A port from Python pg8000
-#homepage: https://github.com/insinfo/pg8000
+homepage: https://github.com/insinfo/pg8000
 
 environment:
   sdk: '>=2.10.0 <3.0.0'
 
 dependencies:
-  crypto: any #">=2.0.0"
-  convert: any #">=1.0.0"
-  #
-  #enough_convert: ^1.6.0
-  #charcode: any #">=1.0.0"
+  crypto: ">=2.0.0" #3.0.2
+  convert: ">=1.0.0" #3.1.1
  
-  saslprep: ^1.0.2
+  #enough_convert: ^1.6.0
+  #charcode: any #">=1.0.0" 
+  #saslprep: ^1.0.2
 
 dev_dependencies:
   #only for test of terrier buffer
-  matcher: any
-  benchmark_harness: any
-
-  test: any
-  yaml: any
+  matcher: any #0.12.13 
+  benchmark_harness: any #2.2.0
+  test: any #1.22.1
+  yaml: any #3.1.1
