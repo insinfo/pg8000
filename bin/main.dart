@@ -1,11 +1,11 @@
-import 'package:pg8000/src/core.dart';
+import 'package:pg8000/pg8000.dart';
 
 void main(List<String> args) async {
   // user md5 = postgres
   //user scram = usarioscram
   //
 
-  //var sslContext = SslContext.createDefaultContext();
+  var sslContext = SslContext.createDefaultContext();
 
   var con = CoreConnection(
     'usarioscram', //usarioscram //postgres
@@ -14,7 +14,7 @@ void main(List<String> args) async {
     port: 5432,
     password: 's1sadm1n', //s1sadm1n
     allowAttemptToReconnect: true,
-    // sslContext: sslContext,
+    sslContext: sslContext,
   );
 
   // var con = CoreConnection('sw.suporte', //usarioscram //postgres

@@ -23,6 +23,10 @@ this is still experimental, that said, I believe it already works in several sce
     - [x] MD5Password
     - [x] SASL SCRAM-SHA-256
 
+#### Connection:
+    - [x] No SSL
+    - [x] With SSL
+
 #### Transaction:
     - [x] PHP PDO style
     - [x] Closure
@@ -34,6 +38,28 @@ this is still experimental, that said, I believe it already works in several sce
     - [x] latin1
     - [x] utf8
     - [x] ascii
+
+## creating a connection With SSL and executing a simple select
+```dart
+    var sslContext = SslContext.createDefaultContext();
+
+    var con = CoreConnection(
+        'user',
+        database: 'dataBaseTest',
+        host: 'localhost',
+        port: 5432,
+        password: '123456',    
+        sslContext: sslContext,   
+    );
+
+    await con.connect();
+
+    var result = await con.executeSimple('select 1').toList();
+    print('result $result');
+    //result [[1]]
+    await con.close();
+
+```
 
 ## creating a connection and executing a simple select
 ```dart

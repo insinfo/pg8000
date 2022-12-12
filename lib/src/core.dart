@@ -239,7 +239,7 @@ class CoreConnection {
 
   Future<CoreConnection> connect({int delayBeforeConnect}) async {
     _connectionState = ConnectionState.socketConnecting;
-    print('Connecting...');
+    // print('Connecting...');
     if (delayBeforeConnect != null) {
       await Future.delayed(Duration(seconds: delayBeforeConnect));
     }
@@ -286,7 +286,7 @@ class CoreConnection {
         onError: _handleSocketError, onDone: _handleSocketClosed);
     _sendStartupMessage();
 
-    print('Connected');
+    //print('Connected');
 
     return _connected.future;
   }
@@ -690,7 +690,7 @@ class CoreConnection {
       int msgType = _buffer.readByte();
       int length = _buffer.readInt32() - 4;
 
-      print('_readData code: ${pgCodeString(msgType)} $msgType');
+      //print('_readData code: ${pgCodeString(msgType)} $msgType');
       var messageBytes = _buffer.readBytes(length);
 
       switch (msgType) {
