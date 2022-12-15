@@ -830,16 +830,15 @@ int main()
     //char fmt[BUFSIZ] = {'\0',};
     //char str[BUFSIZ] = {'\0',};
     int val = 64;
-     for (int i = 0; i < 100000000; i++) // 100000000
-     {
+    for (int i = 0; i < 100000000; i++) // 100000000
+    {
         struct_pack(buf1, "ii", val,val);
     }
 
     clock_t end = clock();
     double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-   // strcpy(str, "test");
-    //snprintf(fmt, sizeof(fmt), "%ds", strlen(str));
-     debug_print ("result: " ,buf1,BUFSIZ);
+
+    debug_print ("result: " ,buf1,BUFSIZ);
     printf("pack time: %f seconds\n", time_spent);
 }
 

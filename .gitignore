@@ -27,3 +27,4 @@ doc/api/
 .flutter-plugins-dependencies
 
 a.exe
+pack_unpack_benchmark.exe

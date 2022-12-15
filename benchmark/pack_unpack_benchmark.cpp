@@ -103,49 +103,190 @@ void debug_print(const char *str, char buf1[], int len)
 //     byte_buffer result(static_cast<char *>(buf), static_cast<char *>(buf) + 4);
 //     return result;
 // }
+#define STRUCT_ENDIAN_NOT_SET 0
+#define STRUCT_ENDIAN_BIG 1
+#define STRUCT_ENDIAN_LITTLE 2
 
-// template <typename IntType> std::string
-void pack(void *b, const char *fmt, long long *values)
+static int myendian = STRUCT_ENDIAN_NOT_SET;
+
+int struct_get_endian(void)
+{
+    int i = 0x00000001;
+    if (((char *)&i)[0])
+    {
+        return STRUCT_ENDIAN_LITTLE;
+    }
+    else
+    {
+        return STRUCT_ENDIAN_BIG;
+    }
+}
+
+static void struct_init(void)
+{
+    myendian = struct_get_endian();
+}
+
+static void pack_int16_t(unsigned char **bp, uint16_t val, int endian)
+{
+    if (endian == myendian)
+    {
+        *((*bp)++) = val;
+        *((*bp)++) = val >> 8;
+    }
+    else
+    {
+        *((*bp)++) = val >> 8;
+        *((*bp)++) = val;
+    }
+}
+
+static void pack_int32_t(unsigned char **bp, uint32_t val, int endian)
+{
+    if (endian == myendian)
+    {
+        *((*bp)++) = val;
+        *((*bp)++) = val >> 8;
+        *((*bp)++) = val >> 16;
+        *((*bp)++) = val >> 24;
+    }
+    else
+    {
+        *((*bp)++) = val >> 24;
+        *((*bp)++) = val >> 16;
+        *((*bp)++) = val >> 8;
+        *((*bp)++) = val;
+    }
+}
+
+static void pack_int64_t(unsigned char **bp, uint64_t val, int endian)
+{
+    if (endian == myendian)
+    {
+        *((*bp)++) = val;
+        *((*bp)++) = val >> 8;
+        *((*bp)++) = val >> 16;
+        *((*bp)++) = val >> 24;
+        *((*bp)++) = val >> 32;
+        *((*bp)++) = val >> 40;
+        *((*bp)++) = val >> 48;
+        *((*bp)++) = val >> 56;
+    }
+    else
+    {
+        *((*bp)++) = val >> 56;
+        *((*bp)++) = val >> 48;
+        *((*bp)++) = val >> 40;
+        *((*bp)++) = val >> 32;
+        *((*bp)++) = val >> 24;
+        *((*bp)++) = val >> 16;
+        *((*bp)++) = val >> 8;
+        *((*bp)++) = val;
+    }
+}
+
+static int pack(void *b, const char *fmt, long long *values, int offset = 0)
 {
     unsigned char *buf = (unsigned char *)b;
-    const char *p;
-    auto bp = &buf;
+
     int idx = 0;
-    for (p = fmt; *p != '\0'; p++)
+
+    const char *p;
+    unsigned char *bp;
+    int ep = myendian;
+    int endian;
+
+    bp = buf + offset;
+    auto bpp = &bp;
+
+    if (STRUCT_ENDIAN_NOT_SET == myendian)
     {
-        auto f = *p;
+        struct_init();
+    }
+
+    for (p = fmt; *p != '\0'; p++)
+    {       
         auto value = values[idx];
-        if (f == 'c')
+        switch (*p)
         {
-            *buf++ = value;
+        case '=': /* native */
+            ep = myendian;
+            break;
+        case '<': /* little-endian */
+            endian = STRUCT_ENDIAN_LITTLE;
+            ep = endian;
+            break;
+        case '>': /* big-endian */
+            endian = STRUCT_ENDIAN_BIG;
+            ep = endian;
+            break;
+        case '!': /* network (= big-endian) */
+            endian = STRUCT_ENDIAN_BIG;
+            ep = endian;
+            break;
+        case 'b':
+            *bp++ = value;
+            break;
+        case 'c':
+            *bp++ = value;
+            break;
+        case 'i':
+            if (ep == STRUCT_ENDIAN_LITTLE)
+            {
+                *bp++ = value;
+                *bp++ = value >> 8;
+                *bp++ = value >> 16;
+                *bp++ = value >> 24;
+            }
+            else
+            {
+                *bp++ = value >> 24;
+                *bp++ = value >> 16;
+                *bp++ = value >> 8;
+                *bp++ = value;
+            }
+            break;
+        case 'h':
+            if (ep == STRUCT_ENDIAN_LITTLE)
+            {
+                *bp++ = value;
+                *bp++ = value >> 8;
+            }
+            else
+            {
+                *bp++ = value >> 8;
+                *bp++ = value;
+            }
+            break;
+        case 'q':
+            if (ep == STRUCT_ENDIAN_LITTLE)
+            {
+                *bp++ = value;
+                *bp++ = value >> 8;
+                *bp++ = value >> 16;
+                *bp++ = value >> 24;
+                *bp++ = value >> 32;
+                *bp++ = value >> 40;
+                *bp++ = value >> 48;
+                *bp++ = value >> 56;
+            }
+            else
+            {
+                *bp++ = value >> 56;
+                *bp++ = value >> 48;
+                *bp++ = value >> 40;
+                *bp++ = value >> 32;
+                *bp++ = value >> 24;
+                *bp++ = value >> 16;
+                *bp++ = value >> 8;
+                *bp++ = value;
+            }
+            break;
         }
-        else if (f == 'i')
-        {
-
-            *((*bp)++) = value >> 24;
-            *((*bp)++) = value >> 16;
-            *((*bp)++) = value >> 8;
-            *((*bp)++) = value;
-        }
-        else if (f == 'h')
-        {
-            *((*bp)++) = value >> 8;
-            *((*bp)++) = value;
-        }
-        else if (f == 'q')
-        {
-            *((*bp)++) = value >> 56;
-            *((*bp)++) = value >> 48;
-            *((*bp)++) = value >> 40;
-            *((*bp)++) = value >> 32;
-            *((*bp)++) = value >> 24;
-            *((*bp)++) = value >> 16;
-            *((*bp)++) = value >> 8;
-            *((*bp)++) = value;
-        }
-
         idx++;
     }
+
+    return (bp - buf);
 }
 
 // std::string pack_uint32_be(uint32_t val)
@@ -157,7 +298,7 @@ void pack(void *b, const char *fmt, long long *values)
 //     packed[3] = val & 0xff;
 //     return std::string(packed, packed + 4);
 // }
-
+//gcc -Wall -O3  .\pack_unpack_benchmark.cpp -o pack_unpack_benchmark.exe -lstdc++
 int main()
 {
 
@@ -168,18 +309,16 @@ int main()
     // char fmt[2] = {'i', 'i'};
     std::vector<unsigned char> myVector{};
     myVector.reserve(100000000 * 16);
-    // int val = 64;
+
     for (int i = 0; i < 100000000; i++) // 100000000
     {
-        char result[BUFSIZ] = {
-            '\0',
-        };
+        char bytes[BUFSIZ] = {'\0'};
         long long values[4] = {64, 65, 66, 67};
-        pack(result, "iiii", values);      
+        pack(bytes, "iiii", values);
 
         for (int j = 0; j < 16; j++)
         {
-            myVector.push_back(result[j]);
+            myVector.push_back(bytes[j]);
         }
 
         // byte_buffer bytes;
@@ -193,11 +332,8 @@ int main()
     }
 
     time(&end);
-    auto v2 = std::vector<unsigned char>(myVector.begin() , myVector.begin()+16);
-     debug_print2("result: ",v2);
-
-    //unsigned char result[BUFSIZ] = {myVector[0], myVector[1], myVector[2], myVector[3], myVector[4], myVector[5], myVector[6], myVector[7], '\0'};
-    //std::cout << "result: " << result;
+    auto v2 = std::vector<unsigned char>(myVector.begin(), myVector.begin() + 16);
+    debug_print2("result: ", v2);
 
     double time_taken = double(end - start);
     std::cout << "pack time: " << std::fixed

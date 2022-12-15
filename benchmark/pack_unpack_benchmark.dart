@@ -21,48 +21,36 @@ void main(List<String> args) {
   // print('result: $result2');
   // print('i_pack time: ${stopw2.elapsed}');
 
-  var stopw3 = Stopwatch()..start();
-  var result3;
-  for (var i = 0; i < 100000000; i++) {
-    result3 = packlrhn('ii', [64, 64]);
-    // result3 = pack2('ihihih', [
-    //   21474830,
-    //   32760,
-    //   21474830,
-    //   32760,
-    //   21474830,
-    //   32760,
-    // ]);
+  // implementation from @lrhn https://github.com/dart-lang/sdk/issues/50708
+  runBenchmark(() {
+    return packlrhn('iiii', [64, 65, 66, 67]);
+  }, 'pack from lrhn', 2);
 
-    // result3 = unpack3('ihihih', [
-    //   1,
-    //   71,
-    //   174,
-    //   14,
-    //   127,
-    //   248,
-    //   1,
-    //   71,
-    //   174,
-    //   14,
-    //   127,
-    //   248,
-    //   1,
-    //   71,
-    //   174,
-    //   14,
-    //   127,
-    //   248
-    // ]);
+  // my pure dart implementation
+  runBenchmark(() {
+    return pack('iiii', [64, 65, 66, 67]);
+  }, 'my pure dart pack', 2);
 
-    //result3 = ihihih_pack(20, 20, 20, 20, 20, 20);
-    // result3 = ihihih_unpack(
-    //     [0, 0, 0, 20, 0, 20, 0, 0, 0, 20, 0, 20, 0, 0, 0, 20, 0, 20]);
+  // using isoos ByteDataWriter
+  runBenchmark(() {
+    return pack2('iiii', [64, 65, 66, 67]);
+  }, 'using isoos ByteDataWriter pack', 2);
+
+  // using terrier RawWriter
+  runBenchmark(() {
+    return pack3('iiii', [64, 65, 66, 67]);
+  }, 'using terrier RawWriter pack', 2);
+}
+
+void runBenchmark(Function closure, String title, [int runCount = 1]) {
+  for (var rc = 0; rc < runCount; rc++) {
+    var stopw3 = Stopwatch()..start();
+    var result3;
+    for (var i = 0; i < 100000000; i++) {
+      result3 = closure();
+    }
+    stopw3.stop();
+    print('$title result: ${utf8.decode(result3)}');
+    print('$title time: ${stopw3.elapsed}');
   }
-
-  stopw3.stop();
-
-  print('result: $result3 | ${utf8.decode(result3)}');
-  //result: [1, 71, 174, 14, 127, 248, 1, 71, 174, 14, 127, 248, 1, 71, 174, 14, 127, 248]
-  print('pack time: ${stopw3.elapsed}');
 }
