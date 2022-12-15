@@ -5,6 +5,8 @@ import 'dependencies/buffer_terrier/raw_reader.dart';
 import 'dependencies/buffer_terrier/raw_writer.dart';
 import 'utils/buffer.dart';
 
+// C# example https://stackoverflow.com/questions/28225303/equivalent-in-c-sharp-of-pythons-struct-pack-unpack/28418846#28418846
+// java example https://stackoverflow.com/questions/29879009/how-to-convert-python-struct-unpack-to-java
 /// binary data pack and unpack
 ///
 ///
@@ -81,8 +83,7 @@ List<int> pack(String fmt, List<int> vals) {
   return bytes;
 }
 
-/// pega valores não-byte (por exemplo, inteiros, strings, etc.)
-/// e os converte em bytes usando o formato especificado
+/// using isoos ByteDataWriter
 List<int> pack2(String fmt, List<int> vals) {
   //[105, 104, 99, 98, 113, 81]
   //['i', 'h', 'c', 'b', 'q', 'Q']
@@ -122,7 +123,7 @@ List<int> pack2(String fmt, List<int> vals) {
   return buffer.toBytes();
 }
 
-/// o mais rapido nos benchmarks usando terrier RawWriter
+/// using terrier RawWriter
 List<int> pack3(String fmt, List<int> vals) {
   //[105, 104, 99, 98, 113, 81]
   //['i', 'h', 'c', 'b', 'q', 'Q']
@@ -159,6 +160,66 @@ List<int> pack3(String fmt, List<int> vals) {
   }
 
   return buffer.toUint8List();
+}
+
+// Character code constants.
+const int _b = 0x62, _c = 0x63, _h = 0x68, _i = 0x69, _q = 0x71;
+const _formatSize = {
+  _h: 2,
+  _i: 4,
+  _c: 1,
+  _b: 1,
+  _q: 8,
+};
+
+/// Format     C Type            Python type        Standard size
+///   h        short              integer              2
+///   i        int                integer              4
+///   c        char               bytes of length 1    1
+///   b        signed char        integer              1
+///   q        long long          integer              8
+/// from lrhn https://github.com/dart-lang/sdk/issues/50708
+Uint8List packlrhn(String format, List<int> values) {
+  if (format.length != values.length) {
+    throw ArgumentError.value(values, "values",
+        "Expected ${format.length} values for format: $format");
+  }
+  var bufferSize = 0;
+
+  for (var i = 0; i < format.length; i++) {
+    bufferSize += _formatSize[format.codeUnitAt(i)] ??
+        (throw FormatException("Unknown format", format, i));
+  }
+  var buffer = ByteData(bufferSize);
+  var cursor = 0;
+  for (var i = 0; i < format.length; i++) {
+    var f = format.codeUnitAt(i);
+    var value = values[i];
+    switch (f) {
+      case _c:
+        buffer.setUint8(cursor++, value);
+        break;
+      case _b:
+        buffer.setInt8(cursor++, value);
+        break;
+      case _i:
+        buffer.setInt32(cursor, value);
+        cursor += 4;
+        break;
+      case _h:
+        buffer.setInt16(cursor, value);
+        cursor += 2;
+        break;
+      case _q: //writeInt64
+        buffer.setInt64(cursor, value);
+        cursor += 8;
+        break;
+      default:
+        assert(false, "unreachable");
+    }
+  }
+  assert(cursor == buffer.lengthInBytes); //length
+  return Uint8List.sublistView(buffer);
 }
 
 /// Format     C Type            Python type        Standard size
