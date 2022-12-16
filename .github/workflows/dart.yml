@@ -62,6 +62,13 @@ jobs:
           sudo -u postgres createdb sistemas --owner=sisadmin 
           PGPASSWORD=s1sadm1n     
       - uses: actions/checkout@v2
+      - name: Copy pg_hba
+        run: |          
+          sudo ls
+          sudo cp ci/pg_hba.conf /etc/postgresql/14.6/main/pg_hba.conf
+          sudo systemctl restart postgresql.service
+          pg_isready
+
       - uses: dart-lang/setup-dart@v1.3
         with:
           sdk: ${{ matrix.sdk }}
