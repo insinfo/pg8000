@@ -43,6 +43,7 @@ jobs:
       - name: Start PostgreSQL on Ubuntu
         run: |
           sudo systemctl start postgresql.service
+          sudo ls
           sudo cp ci/pg_hba.conf /etc/postgresql/14.6/main/pg_hba.conf
           sudo systemctl restart postgresql.service
           pg_isready
