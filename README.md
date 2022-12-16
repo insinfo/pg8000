@@ -1,4 +1,6 @@
 # dargres
+[![CI](https://github.com/insinfo/pg8000/actions/workflows/dart.yml/badge.svg)](https://github.com/insinfo/pg8000/actions/workflows/dart.yml)
+
 an attempt to port Tony Locke's pg8000 python library https://github.com/tlocke/pg8000
 
 Dargres is a pure-Dart PostgreSQL driver
