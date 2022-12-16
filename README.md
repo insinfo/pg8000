@@ -5,6 +5,7 @@ an attempt to port Tony Locke's pg8000 python library https://github.com/tlocke/
 
 Dargres is a pure-Dart PostgreSQL driver
 
+
 this is still experimental, that said, I believe it already works in several scenarios, but it is not yet well tested, the idea is to have as few dependencies as possible and be very fast, at the moment it only depends on the "crypto" and "convert" package , this code was heavily inspired by other PostgreSQL driver implementations and other related projects like
 
 - [x] https://github.com/tlocke/pg8000
