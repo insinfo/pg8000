@@ -2,12 +2,13 @@
 # They are provided by a third-party and are governed by
 # separate terms of service, privacy policy, and support
 # documentation.
-name: Dart
+name: GitHub Actions Dart
+run-name: ${{ github.actor }} is testing out GitHub Actions
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 #env: 
   #DB_HOST: localhost
