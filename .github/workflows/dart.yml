@@ -50,7 +50,8 @@ jobs:
           sudo -u postgres psql --command="SHOW password_encryption;"   
           sudo -u postgres psql --command="CREATE ROLE sisadmin WITH LOGIN SUPERUSER PASSWORD 's1sadm1n'" --command="\du"
           sudo -u postgres psql --command="SET password_encryption = 'md5';" --command="CREATE ROLE usermd5 WITH LOGIN SUPERUSER PASSWORD 's1sadm1n'" --command="\du"
-          sudo -u postgres psql --command="SET password_encryption = 'scram';" --command="CREATE ROLE userscram WITH LOGIN SUPERUSER PASSWORD 's1sadm1n'" --command="\du"
+          sudo -u postgres psql --command="SET password_encryption = 'scram-sha-256';" --command="CREATE ROLE userscram WITH LOGIN SUPERUSER PASSWORD 's1sadm1n'" --command="\du"
+          sudo -u postgres psql --command="SELECT rolname,rolvaliduntil,rolpassword FROM pg_authid" 
       - name: Create additional database
         run: |
           sudo -u postgres createdb banco_teste --owner=sisadmin 
