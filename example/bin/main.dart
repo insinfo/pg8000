@@ -1,4 +1,7 @@
-import 'package:pg8000/pg8000.dart';
+import 'dart:async';
+import 'dart:io';
+
+import 'package:dargres/dargres.dart';
 
 void main(List<String> args) async {
   // user md5 = postgres
@@ -8,12 +11,12 @@ void main(List<String> args) async {
   var sslContext = SslContext.createDefaultContext();
 
   var con = CoreConnection(
-    'usarioscram', //usarioscram //postgres
+    'usermd5', //usarioscram usermd5 userscram //postgres
     database: 'sistemas', //sistemas
     host: 'localhost', //localhost
     port: 5432,
     password: 's1sadm1n', //s1sadm1n
-    allowAttemptToReconnect: true,
+    allowAttemptToReconnect: false,
     sslContext: sslContext,
   );
 
@@ -29,7 +32,7 @@ void main(List<String> args) async {
   await con.connect();
 
   // var count = 0;
-  // Timer.periodic(Duration(milliseconds: 2000), (t) async {
+  // Timer.periodic(Duration(milliseconds: 3000), (t) async {
   //   try {
   //     var result = await con.executeSimple('select $count').toList();
   //     print('result: $result');
@@ -85,26 +88,45 @@ void main(List<String> args) async {
   //   await con.execute("NOTIFY db_change_event, 'This is the payload'");
   // });
 
-  // Timer.periodic(Duration(milliseconds: 3000), (t) async {
-  //   // final transa = await con.beginTransaction();
-  //   // try {
-  //   //   var re = await transa.executeUnnamed(
-  //   //       r"""INSERT INTO "crud_teste"."pessoas_cursos" ("idPessoa", "idCurso") VALUES ($1, $2) """,
-  //   //       [10, 3]).toList();
-  //   //   print('periodic: $re');
-  //   //   await con.commit(transa);
-  //   // } catch (e) {
-  //   //   print('catch (e) $e');
-  //   //   await con.rollBack(transa);
-  //   // }
+  // Timer.periodic(Duration(milliseconds: 2000), (t) async {
+  // final transa = await con.beginTransaction();
+  // try {
+  //   var re = await transa.executeUnnamed(
+  //       r"""INSERT INTO "crud_teste"."pessoas_cursos" ("idPessoa", "idCurso") VALUES ($1, $2) """,
+  //       [10, 3]).toList();
+  //   print('periodic: $re');
+  //   await con.commit(transa);
+  // } catch (e) {
+  //   print('catch (e) $e');
+  //   await con.rollBack(transa);
+  // }
+  await con.execute('DROP SCHEMA IF EXISTS myschema CASCADE;');
+  await con.execute('CREATE SCHEMA IF NOT EXISTS myschema;');
+  await con.execute('SET search_path TO myschema;');
+  await con.execute('''CREATE TABLE IF NOT EXISTS myschema.pessoas_cursos (
+      "id" serial8 NOT NULL,
+      "idPessoa" int8,
+      "idCurso" int8,
+      "name" varchar(255),
+      CONSTRAINT "pessoas_cursos_pkey" PRIMARY KEY ("id")
+    );''');
 
-  //   await con.runInTransaction((ctx) async {
-  //     return await ctx.executeUnnamed(
-  //         r"""INSERT INTO "crud_teste"."pessoas_cursos" ("idPessoa", "idCurso") VALUES ($1, $2) """,
-  //         [10, 3]).toList();
-  //   });
-  //   print('periodic1 fim');
-  // });
+  await con.runInTransaction((ctx) async {
+    var statement = await ctx.prepareStatement(
+        r'''INSERT INTO "myschema"."pessoas_cursos" ("idPessoa", "idCurso","name2") VALUES ($1, $2 ,$3)''',
+        [10, 3, 'Isaque']);
+    //await ctx.executeStatement(statement);
+    await statement.executeStatement();
+  });
+  var result = await con
+      .querySimple('select * from "myschema"."pessoas_cursos" limit 1');
+  print('result $result');
+  // } on PostgresqlException catch (e, s) {
+  //   print('main catch ${e} $s');
+  // }
+
+  print('periodic1 fim');
+  //});
 
   // Timer.periodic(Duration(milliseconds: 2000), (t) async {
   // final transa = await con.beginTransaction();
@@ -197,4 +219,6 @@ void main(List<String> args) async {
   // });
 
   //await con.close();
+
+  //exit(0);
 }

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:pg8000/src/dependencies/buffer_isoos/buffer.dart';
+import 'package:dargres/src/dependencies/buffer_isoos/buffer.dart';
 import 'package:test/test.dart';
 
 void main() {

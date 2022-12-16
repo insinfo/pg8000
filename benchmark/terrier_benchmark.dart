@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:benchmark_harness/benchmark_harness.dart';
-import 'package:pg8000/src/dependencies/buffer_terrier/raw_writer.dart';
+import 'package:dargres/src/dependencies/buffer_terrier/raw_writer.dart';
 
 void main() {
   const minLength = 128;

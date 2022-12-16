@@ -1,11 +1,14 @@
 import 'server_notice.dart';
 
 class PostgresqlException implements Exception {
-  PostgresqlException(this.message,
-      {this.connectionName,
-      this.serverMessage,
-      this.errorCode,
-      this.serverErrorCode});
+  PostgresqlException(
+    this.message, {
+    this.connectionName,
+    this.serverMessage,
+    this.errorCode,
+    this.serverErrorCode,
+    this.sql,
+  });
 
   final String message;
 
@@ -19,20 +22,34 @@ class PostgresqlException implements Exception {
 
   final dynamic serverErrorCode;
 
+  final dynamic sql;
+
   @override
   String toString() {
-    if (serverMessage != null) return serverMessage.toString();
+    if (serverMessage != null) {
+      var m = serverMessage.toString();
+      if (sql != null) {
+        m += '\r\nSQL: $sql';
+      }
+      return m;
+    }
 
-    final buf = new StringBuffer(message);
-    if (errorCode != null)
-      buf
-        ..write(' (')
-        ..write(errorCode)
-        ..write(')');
-    if (connectionName != null)
-      buf
-        ..write(' #')
-        ..write(connectionName);
+    final buf = StringBuffer(message);
+    if (errorCode != null) {
+      buf.write(' (');
+      buf..write(errorCode);
+      buf..write(')');
+    }
+
+    if (connectionName != null) {
+      buf.write(' #');
+      buf.write(connectionName);
+    }
+
+    if (sql != null) {
+      buf.write(' SQL: $sql');
+    }
+
     return buf.toString();
   }
 }

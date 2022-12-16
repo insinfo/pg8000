@@ -1,5 +1,5 @@
-import 'package:pg8000/src/core.dart';
-import 'package:pg8000/src/exceptions.dart';
+import 'package:dargres/src/core.dart';
+import 'package:dargres/src/exceptions.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -28,7 +28,7 @@ CREATE DATABASE database_name
       //     );
 
       var db = CoreConnection.fromUri(
-          'postgres://postgres:s1sadm1n@localhost:5432/sistemas');
+          'postgres://usermd5:s1sadm1n@localhost:5432/sistemas');
       await db.connect();
       var res = await db.execute('select 1');
       expect(res, equals(1));
@@ -42,7 +42,7 @@ CREATE DATABASE database_name
 
     test('test authentication md5 fromUri ssl', () async {
       var db = CoreConnection.fromUri(
-          'postgres://postgres:s1sadm1n@localhost:5432/sistemas?sslmode=require');
+          'postgres://usermd5:s1sadm1n@localhost:5432/sistemas?sslmode=require');
       await db.connect();
       var res = await db.execute('select 1');
       expect(res, equals(1));
@@ -50,7 +50,21 @@ CREATE DATABASE database_name
 
     test('test authentication scram', () async {
       var con = CoreConnection(
-        'usarioscram',
+        'userscram',
+        database: 'sistemas',
+        host: 'localhost',
+        port: 5432,
+        password: 's1sadm1n',
+        // sslContext: sslContext,
+      );
+      await con.connect();
+      var res = await con.execute('select 1');
+      expect(res, equals(1));
+    });
+
+    test('test transation 1', () async {
+      var con = CoreConnection(
+        'userscram',
         database: 'sistemas',
         host: 'localhost',
         port: 5432,

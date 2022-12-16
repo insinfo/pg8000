@@ -7,9 +7,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:pg8000/src/row_info.dart';
-import 'package:pg8000/src/dependencies/sasl_scram/sasl_scram.dart';
-import 'package:pg8000/src/utils/utils.dart';
+import 'row_info.dart';
+import 'dependencies/sasl_scram/sasl_scram.dart';
+import 'utils/utils.dart';
 
 import 'authentication_request_type.dart';
 import 'client_notice.dart';
@@ -128,7 +128,7 @@ class CoreConnection {
   final Queue<Query> _sendQueryQueue = Queue<Query>();
   Query _query;
 
-  int _prepareStatementId = 0;
+  int prepareStatementId = 0;
   //int _transactionLevel = 0;
 
   // transaction queue to be executed
@@ -176,6 +176,7 @@ class CoreConnection {
       replication: settings.replication,
       connectionName: settings.connectionName,
       textCharset: settings.textCharset,
+      allowAttemptToReconnect: settings.allowAttemptToReconnect,
     );
   }
 
@@ -195,7 +196,7 @@ class CoreConnection {
     }
 
     if (connectionName == null) {
-      connectionName = 'pg8000_$connectionId';
+      connectionName = 'dargres_$connectionId';
     }
     connectionId++;
 
@@ -326,33 +327,48 @@ class CoreConnection {
     return completer.future;
   }
 
-  ///
-  /// execute sql query without prepared statement (executeSimple) if params is null
-  /// otherwise execute prepared statement without name (executeUnnamed)
-  ///
-  /// Example: con.execute('select * from crud_teste.pessoas limit \$1',[2])
-  ///
-  Future<int> execute(String sql, [List params]) async {
-    var query = Query(sql);
-    query.state = QueryState.init;
-    if (params != null && params.isNotEmpty) {
-      query.queryType = QueryType.unnamedStatement;
-      query.addPreparedParams(params, []);
-    } else {
+  /// Execute a sql command e return affected row count
+  /// Example: con.execute('select * from crud_teste.pessoas limit 1')
+  Future<int> execute(String sql) async {
+    try {
+      var query = Query(sql);
+      query.state = QueryState.init;
       query.queryType = QueryType.simple;
+      _enqueueQuery(query);
+      await query.stream.toList();
+      return query.rowsAffected ?? 0;
+    } catch (ex, st) {
+      return Future.error(ex, st);
     }
-    _enqueueQuery(query);
-    await query.stream.isEmpty;
-    return query.rowsAffected ?? 0;
   }
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
-  Stream<Row> executeSimple(String statement, [values]) {
+  /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
+  Future<List<Row>> querySimple(String statement, [values]) {
+    return querySimpleAsStream(statement, values).toList();
+  }
+
+  /// execute a simple query whitout prepared statement
+  /// this use a simple Postgresql Protocol
+  /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
+  Stream<Row> querySimpleAsStream(String statement, [params]) {
     try {
-      if (values != null)
-        statement = substitute(statement, values, typeConverter.encodeValue);
-      var query = Query(statement);
+      // if (params != null) {
+      //   statement = substitute(statement, params, typeConverter.encodeValue);
+      // }
+      Query query;
+      if (params != null && params.isNotEmpty) {
+        for (var i = 0; i < params.length; i++) {
+          var param = params[i];
+          statement =
+              statement.replaceAll(r'$' + (i + 1).toString(), "'$param'");
+        }
+        query = Query(statement);
+      } else {
+        query = Query(statement);
+      }
+      //var query = Query(statement);
       query.state = QueryState.init;
       query.queryType = QueryType.simple;
       // print('call executeSimple: $statement');
@@ -365,50 +381,55 @@ class CoreConnection {
 
   /// execute a prepared unnamed statement
   /// Example: com.executeUnnamed('select * from crud_teste.pessoas limit \$1', [1]);
-  Stream<Row> executeUnnamed(String statement, List params,
-      [List oids = const []]) {
+  // Stream<Row> executeUnnamed(String statement, List params,
+  //     [List oids = const []]) {
+  //   try {
+  //     var query = Query(statement);
+  //     query.state = QueryState.init;
+  //     query.queryType = QueryType.unnamedStatement;
+  //     query.addPreparedParams(params, oids);
+  //     _enqueueQuery(query);
+  //     return query.stream;
+  //   } catch (ex, st) {
+  //     return Stream.fromFuture(Future.error(ex, st));
+  //   }
+  // }
+
+  /// return Query prepared with statementName for execute with (executeStatement) method
+  Future<Query> prepareStatement(String statement, List params) async {
     try {
-      var query = Query(statement);
+      var query = Query(statement, preparedParams: params);
       query.state = QueryState.init;
-      query.queryType = QueryType.unnamedStatement;
-      query.addPreparedParams(params, oids);
+      query.error = null;
+      query.prepareStatementId = prepareStatementId;
+      prepareStatementId++;
+      query.queryType = QueryType.prepareStatement;
       _enqueueQuery(query);
-      return query.stream;
+      await query.stream.toList();
+      //cria uma copia
+      // var newQuery = query.clone();
+      // return newQuery;
+      return query;
     } catch (ex, st) {
-      return Stream.fromFuture(Future.error(ex, st));
+      return Future.error(ex, st);
     }
   }
 
-  /// return Query prepares with statementName for execute with (executeNamed)
-  Future<Query> prepareStatement(statement, [List oids = const []]) async {
-    var query = Query(statement);
-    query.state = QueryState.init;
-    query.prepareStatementId = _prepareStatementId;
-    //generate unique name for named prepared Statement
-    query.statementName = "pg8000_statement_${query.prepareStatementId}";
-
-    _prepareStatementId++;
-    query.queryType = QueryType.prepareStatement;
-    query.addOids(oids);
-
-    _enqueueQuery(query);
-
-    await query.stream.isEmpty;
-
-    //cria uma copia
-    var newQuery = query.clone();
-    return newQuery;
+  /// run Query prepared with (prepareStatement) method and return List of Row
+  Future<List<Row>> executeStatement(Query query) {
+    return executeStatementAsStream(query).toList();
   }
 
-  Stream<Row> executeNamed(Query query) {
+  /// run Query prepared with (prepareStatement) method
+  Stream<Row> executeStatementAsStream(Query query) {
     try {
       //cria uma copia
-      var newQuery = query.clone();
+      var newQuery = query; //query.clone();
+      newQuery.error = null;
       newQuery.state = QueryState.init;
-      print('execute_named ');
+      newQuery.reInitStream();
+      //print('execute_named ');
       newQuery.queryType = QueryType.namedStatement;
-
-      //PreparedStatementState.executeStatement;
       _enqueueQuery(newQuery);
       return newQuery.stream;
     } catch (ex, st) {
@@ -417,36 +438,42 @@ class CoreConnection {
   }
 
   Future<TransactionContext> beginTransaction() async {
-    var transaction = TransactionContext(_transactionId);
+    var transaction = TransactionContext(_transactionId, this);
     //'START TRANSACTION'
-    final commandBegin = 'begin';
-    final stream = transaction.executeSimple(commandBegin);
+    final commandBegin = 'BEGIN';
     _enqueueTransaction(transaction);
-    await stream.isEmpty;
+    await transaction.execute(commandBegin);
     _transactionId++;
     return transaction;
   }
 
   Future<dynamic> rollBack(TransactionContext transaction) async {
-    var stream = transaction.executeSimple('rollback');
-    await stream.isEmpty;
-    if (transaction == _currentTransaction) _currentTransaction = null;
+    await transaction.execute('ROLLBACK');
+    //if (transaction == _currentTransaction)
+    //print('rollBack id ${_currentTransaction?.transactionId}');
+    _currentTransaction = null;
+    //print('rollBack $_currentTransaction');
   }
 
   Future<dynamic> commit(TransactionContext transaction) async {
-    var stream = transaction.executeSimple('commit');
-    await stream.isEmpty;
-    if (transaction == _currentTransaction) _currentTransaction = null;
+    await transaction.execute('COMMIT');
+    // if (transaction == _currentTransaction)
+    //print('commit id ${_currentTransaction?.transactionId}');
+    _currentTransaction = null;
+    // print('commit $_currentTransaction');
   }
 
   Future<T> runInTransaction<T>(
       Future<T> operation(TransactionContext ctx)) async {
     final transa = await beginTransaction();
+    //print('runInTransaction Id:${transa.transactionId}');
     try {
       final result = await operation(transa);
       await commit(transa);
       return result;
-    } catch (_) {
+    } catch (e, s) {
+      //print('runInTransaction catch (_)');
+      //print('runInTransaction  $e $s');
       await rollBack(transa);
       rethrow;
     }
@@ -466,26 +493,26 @@ class CoreConnection {
             connectionName: connectionName);
       }
     }
-
+    // print('_enqueueTransaction id: ${transaction.transactionId}');
     _transactionQueue.addLast(transaction);
     Timer.run(_processTransactionQueue);
   }
 
   void _processTransactionQueue() async {
     if (_transactionQueue.isEmpty) {
-      print('_processTransactionQueue _transactionQueue.isEmpty');
+      //print('_processTransactionQueue _transactionQueue.isEmpty');
       return;
     }
     if (_currentTransaction != null) {
-      print('_processTransactionQueue _currentTransaction != null');
+      //print('_processTransactionQueue _currentTransaction != null');
       return;
     }
     if (_connectionState != ConnectionState.idle) {
-      print('_processTransactionQueue state != ConnectionState.idle');
+      //print('_processTransactionQueue state != ConnectionState.idle');
       return;
     }
     _currentTransaction = _transactionQueue.removeFirst();
-    //print('_processTransactionQueue $_currentTransaction');
+    // print('_processTransactionQueue ${_currentTransaction.transactionId}');
     Timer.run(_processSendQueryQueue);
   }
 
@@ -512,7 +539,7 @@ class CoreConnection {
             serverErrorCode: lastServerNotice.code);
       }
     }
-    print('add Query ');
+    //print('_enqueueQuery add Query ');
     query.state = QueryState.queued;
     _sendQueryQueue.addLast(query);
     Timer.run(_processSendQueryQueue);
@@ -520,18 +547,17 @@ class CoreConnection {
 
   Future<void> tryReconnect() async {
     if (_connectionState == ConnectionState.socketConnecting) {
-      print(
-          'tryReconnect: não tenta reconectar pois esta fazendo conexão agora');
+      //print( 'tryReconnect: não tenta reconectar pois esta fazendo conexão agora');
       return;
     }
     if (_tryReconnectCount > tryReconnectLimit) {
-      print('tryReconnect: limit excedido');
+      //print('tryReconnect: limit excedido');
       return;
     }
 
     _tryReconnectCount++;
     // tryReconnectLimit
-    print('tryReconnect: tentando se reconectar ');
+    //print('tryReconnect: tentando se reconectar ');
     await connect(delayBeforeConnect: 1);
   }
 
@@ -564,8 +590,6 @@ class CoreConnection {
 
     if (query.queryType == QueryType.simple) {
       _sendExecuteSimpleStatement(query);
-    } else if (query.queryType == QueryType.unnamedStatement) {
-      _sendExecuteUnnamedStatement(query);
     } else if (query.queryType == QueryType.prepareStatement) {
       await _sendPreparedStatement(query);
     } else if (query.queryType == QueryType.namedStatement) {
@@ -585,26 +609,6 @@ class CoreConnection {
     await this._sock_flush();
   }
 
-  Future<dynamic> _sendExecuteUnnamedStatement(Query query) async {
-    // execute_unnamed
-    // print('send execute_unnamed');
-    this._send_PARSE([NULL_BYTE], query.sql, query.oids);
-    this._sock_write(SYNC_MSG);
-    await this._sock_flush();
-    // self.handle_messages(context);
-    this._send_DESCRIBE_STATEMENT([NULL_BYTE]);
-    this._sock_write(SYNC_MSG);
-    await this._sock_flush();
-    var params = typeConverter.makeParams(query.preparedParams);
-    query.isPreparedComplete = false;
-    this._send_BIND([NULL_BYTE], params);
-    // this.handle_messages(context)
-    this._send_EXECUTE();
-    this._sock_write(SYNC_MSG);
-    await this._sock_flush();
-    // this.handle_messages(context)
-  }
-
   Future<dynamic> _sendPreparedStatement(Query query) async {
     //print('send prepare_statement');
     var statementNameBytes = [
@@ -618,7 +622,7 @@ class CoreConnection {
   }
 
   Future<dynamic> _sendExecuteNamedStatement(Query query) async {
-    print('send namedStatement:');
+    //print('send namedStatement:');
     var params = typeConverter.makeParams(query.preparedParams);
     var statementNameBytes = [
       ...typeConverter.charsetEncode(query.statementName, defaultCodeCharset),
@@ -658,7 +662,7 @@ class CoreConnection {
     //   String - Parameter value
 
     // val is array of bytes
-    var val = i_pack(protocol);
+    var val = [...i_pack(protocol)];
     for (var entry in _initParams.entries) {
       val.addAll([
         ...typeConverter.charsetEncode(
@@ -690,8 +694,8 @@ class CoreConnection {
       int msgType = _buffer.readByte();
       int length = _buffer.readInt32() - 4;
 
-      //print('_readData code: ${pgCodeString(msgType)} $msgType');
-      var messageBytes = _buffer.readBytes(length);
+      // print('_readData code: ${pgCodeString(msgType)} $msgType');
+      final messageBytes = _buffer.readBytes(length);
 
       switch (msgType) {
         case NOTICE_RESPONSE:
@@ -730,7 +734,6 @@ class CoreConnection {
         case PARAMETER_DESCRIPTION:
           _handle_PARAMETER_DESCRIPTION(messageBytes);
           break;
-
         case NOTIFICATION_RESPONSE:
           _handle_NOTIFICATION_RESPONSE(messageBytes);
           break;
@@ -787,17 +790,25 @@ class CoreConnection {
         hasConnected = true;
         _connected.complete(this);
       }
+      final query = _query;
 
-      //print('handle_READY_FOR_QUERY ${_query?.queryType} ${_query?.state}');
+      //print('handle_READY_FOR_QUERY ${query?.queryType} ${query?.state}');
 
       //fix async call
-      if (_query?.queryType == QueryType.prepareStatement) {
-        _query?.close();
+      if (query?.queryType == QueryType.prepareStatement &&
+          query?.error == null) {
+        query.state = QueryState.done;
+        query?.close();
         _query = null;
       }
-      if (_query?.state == QueryState.done) {
-        _query?.close();
+      if (query?.state == QueryState.done) {
+        query?.close();
         _query = null;
+      }
+      if (query?.state == QueryState.error) {
+        query?.addStreamError(_query.error, query.stackTrace);
+        _query = null;
+        //print('handle_READY_FOR_QUERY throw');
       }
 
       Timer.run(_processSendQueryQueue);
@@ -896,22 +907,25 @@ class CoreConnection {
     // transactionState == TransactionState.error
     if (_transaction_status?.first == IN_FAILED_TRANSACTION &&
         query.error != null) {
+      //
       //sql = context.statement.split()[0].rstrip(";").upper()
-      if (query.sql != "rollback") {
-        print('in failed transaction block');
-      }
+      //if (query.sql != "ROLLBACK") {
+      print('in failed transaction block');
+
+      //}
     }
 
     var commandString = typeConverter.charsetDecode(
         data.sublist(0, data.length - 1), textCharset);
     var values = commandString.split(' ');
     int rowsAffected = int.tryParse(values.last) ?? 0;
+    if (query != null) {
+      query.state = QueryState.done;
+      //query.commandIndex++;
+      query.rowsAffected = rowsAffected;
+    }
 
-    query.state = QueryState.done;
-    //query.commandIndex++;
-    query.rowsAffected = rowsAffected;
-
-    // print("handle_COMMAND_COMPLETE _query done");
+    //print("handle_COMMAND_COMPLETE");
   }
 
   /// [statement_name_bin] name statement bytes
@@ -921,6 +935,7 @@ class CoreConnection {
     val.addAll(
         [...typeConverter.charsetEncode(statement, textCharset), NULL_BYTE]);
 
+    oids = oids != null ? oids : [];
     val.addAll(h_pack(Utils.len(oids)));
     for (var oid in oids) {
       val.addAll(i_pack(oid == -1 ? 0 : oid));
@@ -985,7 +1000,7 @@ class CoreConnection {
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
     //this.notices.add({s[0:1]: s[1:] for s in data.split(NULL_BYTE)});
     var dataSplit = Utils.splitList(data, NULL_BYTE);
-    var map = <String, String>{};
+    final map = <String, String>{};
     for (var bytes in dataSplit) {
       if (bytes.isNotEmpty) {
         var key = typeConverter.charsetDecode(
@@ -993,14 +1008,14 @@ class CoreConnection {
         map[key] = typeConverter.charsetDecode(bytes.sublist(1), textCharset);
       }
     }
-    var msg = ServerNotice(false, map, connectionName);
+    final msg = ServerNotice(false, map, connectionName);
     _notices.add(msg);
-    print('handle_NOTICE_RESPONSE');
+    //print('handle_NOTICE_RESPONSE $map');
   }
 
   void _handle_NOTIFICATION_RESPONSE(List<int> data) {
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
-    print('_handle_NOTIFICATION_RESPONSE');
+    //print('_handle_NOTIFICATION_RESPONSE');
     var backend_pid = i_unpack(data)[0];
     var idx = 4;
     var null_idx = data.indexOf(NULL_BYTE, idx);
@@ -1181,7 +1196,7 @@ class CoreConnection {
   }
 
   void _handleSocketError(dynamic error, {bool closed = false}) {
-    print('_handleSocketError $error');
+    //print('_handleSocketError $error');
 
     if (_connectionState == ConnectionState.closed) {
       _notices.add(ClientNotice(
@@ -1202,9 +1217,9 @@ class CoreConnection {
     } else {
       final query = _query;
       if (query != null) {
-        query.state = QueryState.done;
-        query.addError(PostgresqlException(msg,
-            errorCode: error, connectionName: connectionName));
+        query.state = QueryState.error;
+        query.error = PostgresqlException(msg,
+            errorCode: error, connectionName: connectionName, sql: query.sql);
       } else {
         _notices.add(ClientNotice(
             isError: true,
@@ -1214,14 +1229,10 @@ class CoreConnection {
             exception: error));
       }
     }
-
-    //isaque add 12/12/2022
-    _query = null;
-    print('_handleSocketError _query = null');
   }
 
   void _handleSocketClosed() {
-    print('_handleSocketClosed');
+    //print('_handleSocketClosed');
     if (_connectionState != ConnectionState.closed) {
       _handleSocketError(null, closed: true);
     }
@@ -1263,26 +1274,28 @@ class CoreConnection {
     var msg = ServerNotice(true, map, connectionName);
     lastServerNotice = msg;
 
-    var ex = PostgresqlException(
+    var postgresqlException = PostgresqlException(
       msg.message,
       connectionName: connectionName,
       serverMessage: msg,
       errorCode: msg.code,
       serverErrorCode: msg.code,
+      sql: _query?.sql,
     );
 
-    print('handle_ERROR_RESPONSE $map ');
+    //print('handle_ERROR_RESPONSE $map ');
 
     if (!hasConnected) {
       _connectionState = ConnectionState.closed;
       this._socket.destroy();
-      _connected.completeError(ex);
+      _connected.completeError(postgresqlException);
       //hasConnected = false;
     } else {
       final query = _query;
       if (query != null) {
-        query.state = QueryState.done;
-        query.addError(ex);
+        query.state = QueryState.error;
+        query.error = postgresqlException;
+        // query.stackTrace = StackTrace.current;
       } else {
         _notices.add(msg);
       }
@@ -1298,9 +1311,6 @@ class CoreConnection {
         }
       }
     }
-    //isaque add 12/12/2022
-    _query = null;
-    print('_handle_ERROR_RESPONSE _query = null');
   }
 
   Future<void> close() async {
@@ -1313,9 +1323,12 @@ class CoreConnection {
     if (query != null) {
       var c = query;
       if (!c.streamIsClosed) {
-        c.addError(PostgresqlException(
+        var postgresqlException = PostgresqlException(
             'Connection closed before query could complete',
-            connectionName: connectionName));
+            connectionName: connectionName);
+        c.state = QueryState.error;
+        c.error = postgresqlException;
+        c.addStreamError(postgresqlException);
         await c.close();
         _query = null;
       }
@@ -1347,7 +1360,7 @@ class CoreConnection {
   }
 
   void _destroy() {
-    print('_destroy');
+    print('CoreConnection _destroy');
     hasConnected = false;
     _connectionState = ConnectionState.closed;
     this._socket.destroy();

@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:dargres/dargres.dart';
+
 import 'column_description.dart';
 import 'row_info.dart';
 
@@ -11,6 +13,7 @@ class QueryState {
   static const QueryState streaming = const QueryState(7);
   static const QueryState done = const QueryState(8);
   static const QueryState init = const QueryState(9);
+  static const QueryState error = const QueryState(10);
 
   @override
   String toString() {
@@ -20,6 +23,7 @@ class QueryState {
     if (value == 7) v = 'streaming';
     if (value == 8) v = 'done';
     if (value == 9) v = 'init';
+    if (value == 10) v = 'error';
     return 'QueryState.$v';
   }
 }
@@ -28,7 +32,6 @@ class QueryType {
   final String value;
   const QueryType(this.value);
   static const QueryType prepareStatement = const QueryType('prepareStatement');
-  static const QueryType unnamedStatement = const QueryType('unnamedStatement');
   static const QueryType namedStatement = const QueryType('namedStatement');
   static const QueryType simple = const QueryType('simple');
 
@@ -43,8 +46,12 @@ class Query {
   final String sql;
 
   /// for prepared named statement
-  String statementName;
+
   int prepareStatementId = 0;
+
+  /// generate unique name for named prepared Statement
+  String get statementName => '$prepareStatementId'
+      .padLeft(12, '0'); //dargres_statement_$prepareStatementId
 
   QueryState state = QueryState.queued;
 
@@ -54,7 +61,7 @@ class Query {
   List _params;
 
   /// oids for prepared querys
-  List _oids;
+  List _oids = [];
 
   /// se ouver params é uma Prepared query
   //bool get isPrepared => _params != null || _params?.isEmpty == true;
@@ -75,7 +82,25 @@ class Query {
 
   /// informações das colunas
   List<ColumnDescription> columns;
-  dynamic error = null;
+  //
+  PostgresqlException _error = null;
+  set error(PostgresqlException e) {
+    _error = e;
+  }
+
+  PostgresqlException get error => _error;
+
+  StackTrace stackTrace = null;
+
+  TransactionContext _transactionContext;
+
+  set transactionContext(TransactionContext ctx) {
+    _transactionContext = ctx;
+  }
+
+  Future<List<Row>> executeStatement() {
+    return _transactionContext.executeStatement(this);
+  }
 
   StreamController<Row> _controller = StreamController<Row>();
   Stream<Row> get stream => _controller.stream;
@@ -84,21 +109,20 @@ class Query {
     return _controller.isClosed;
   }
 
+  /// for use internal not call this
   void reInitStream() {
-    _controller = StreamController<dynamic>();
+    _controller = StreamController<Row>();
   }
 
   Query(
     this.sql, {
-    List preparedParamsP,
+    List preparedParams,
     this.prepareStatementId = 0,
     List oidsP,
     this.columns,
     //this.input_funcs = const [],
   }) {
-    if (preparedParamsP != null) {
-      _params = preparedParamsP;
-    }
+    _params = preparedParams;
 
     if (oidsP != null) {
       _oids = oidsP;
@@ -108,34 +132,37 @@ class Query {
   }
 
   Query clone() {
-    var newQuery = new Query(
-      this.sql,
-      columns: this.columns,
-      prepareStatementId: this.prepareStatementId,
-      preparedParamsP: this.preparedParams,
-      oidsP: this.oids,
+    final newQuery = new Query(
+      sql,
+      columns: columns,
+      prepareStatementId: prepareStatementId,
+      preparedParams: preparedParams,
+      oidsP: oids,
       //input_funcs: this.input_funcs,
     );
-    newQuery.queryType = this.queryType;
-    newQuery.columnCount = this.columnCount;
-    newQuery.rowCount = this.rowCount;
-    newQuery.rowsAffected = this.rowsAffected;
-    newQuery.statementName = this.statementName;
-    newQuery.error = this.error;
-    newQuery.isPreparedComplete = this.isPreparedComplete;
-    newQuery.state = this.state;
+    newQuery.queryType = queryType;
+    newQuery.columnCount = columnCount;
+    newQuery.rowCount = rowCount;
+    newQuery.rowsAffected = rowsAffected;
+    newQuery.error = error;
+    newQuery.isPreparedComplete = isPreparedComplete;
+    newQuery.state = state;
 
     return newQuery;
   }
 
-  void addPreparedParams(List params, [List oids]) {
+  void addPreparedParams(List params, [List oidsP]) {
     _params = params;
-    _oids = oids;
+    if (oidsP != null) {
+      _oids = oidsP;
+    }
     isPreparedComplete = false;
   }
 
-  void addOids(List oids) {
-    _oids = oids;
+  void addOids(List oidsP) {
+    if (oidsP != null) {
+      _oids = oidsP;
+    }
   }
 
   void addRow(List<dynamic> rowData) {
@@ -151,9 +178,8 @@ class Query {
     //print('Query@close');
   }
 
-  void addError(Object err) {
-    error = err;
-    _controller.addError(err);
+  void addStreamError(Object err, [StackTrace stackTrace]) {
+    _controller.addError(err, stackTrace);
     // stream will be closed once the ready for query message is received.
   }
 }

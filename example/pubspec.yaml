@@ -1,0 +1,13 @@
+name: example_dargres
+version: 1.0.0
+description: example_dargres
+publish_to: none
+environment:
+  sdk: '>=2.10.0 <3.0.0'
+
+dependencies:
+  dargres:
+    path: ../
+
+dev_dependencies:
+ 

@@ -1,7 +1,7 @@
-name: pg8000
+name: dargres
 version: 1.0.0
 description: >
-  A port from Python pg8000
+  Dargres a port from Python pg8000
 homepage: https://github.com/insinfo/pg8000
 
 environment:

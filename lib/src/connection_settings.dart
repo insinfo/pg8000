@@ -27,7 +27,7 @@ class ConnectionSettings {
   String applicationName;
   dynamic replication;
   String connectionName;
-
+  bool allowAttemptToReconnect = false;
   ConnectionSettings({
     this.user,
     this.host = 'localhost',
@@ -43,6 +43,7 @@ class ConnectionSettings {
     this.replication = null,
     this.connectionName = null,
     this.textCharset = 'utf8',
+    this.allowAttemptToReconnect = false,
   });
 
   /// create Connection Settings from URI String

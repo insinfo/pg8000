@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:pg8000/src/dependencies/buffer_terrier/raw_writer.dart';
-import 'package:pg8000/src/dependencies/buffer_terrier/terrier_test_helpers.dart';
+import 'package:dargres/src/dependencies/buffer_terrier/raw_writer.dart';
+import 'package:dargres/src/dependencies/buffer_terrier/terrier_test_helpers.dart';
 import 'package:test/test.dart';
 
 void main() {

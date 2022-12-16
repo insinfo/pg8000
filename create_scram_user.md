@@ -13,3 +13,6 @@ CREATE ROLE usarioscram WITH LOGIN SUPERUSER PASSWORD 's1sadm1n';
 
 # test user
 psql -h localhost -p 5432 --username=usarioscram postgres
+
+
+ psql --command="SET password_encryption = 'md5';" --command="CREATE ROLE usermd5 WITH LOGIN SUPERUSER PASSWORD 's1sadm1n'" --command="\du"

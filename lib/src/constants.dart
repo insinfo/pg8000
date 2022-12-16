@@ -2,7 +2,8 @@ import 'pack_unpack.dart';
 
 const int NULL_BYTE = 0; // b"\x00"
 
-// Message codes
+// Message Formats
+//https://www.postgresql.org/docs/current/protocol-message-formats.html
 const int NOTICE_RESPONSE = 78; //'N'.codeUnitAt(0) ;// b"N"
 const int AUTHENTICATION_REQUEST = 82; // b"R"
 const int PARAMETER_STATUS = 83; // b"S"
@@ -16,7 +17,7 @@ const int PARSE_COMPLETE = 49; // b"1"
 const int BIND_COMPLETE = 50; // b"2"
 const int CLOSE_COMPLETE = 51; // b"3"
 const int PORTAL_SUSPENDED = 115; //b"s"
-const int NO_DATA = 98; //b"n"
+const int NO_DATA = 110; //b"n"
 const int PARAMETER_DESCRIPTION = 116; // b"t"
 const int NOTIFICATION_RESPONSE = 65; //b"A"
 const int COPY_DONE = 99; //b"c"

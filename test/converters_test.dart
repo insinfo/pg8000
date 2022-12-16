@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:pg8000/src/converters.dart';
+import 'package:dargres/src/converters.dart';
 import 'package:test/test.dart';
 
 void main() {

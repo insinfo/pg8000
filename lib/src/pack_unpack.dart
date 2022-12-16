@@ -422,7 +422,7 @@ List<int> i_pack(
   // data.setInt32(0, val, endian);
   // return data.buffer.asUint8List();
   final result = Uint8List(4)..buffer.asByteData().setInt32(0, val, endian);
-  return [...result]; //<int>[]..addAll(result);
+  return result; //[...result]; //<int>[]..addAll(result);
 }
 
 List<int> i_unpack(List<int> bytes, [int offset = 0]) {
@@ -445,7 +445,8 @@ List<int> h_pack(
   // data.setInt16(0, val, endian);
   // return data.buffer.asUint8List();
   final result = Uint8List(2)..buffer.asByteData().setInt16(0, val, endian);
-  return [...result]; //<int>[]..addAll(result);
+  return result;
+  //[...result]; //<int>[]..addAll(result);
 }
 
 /// read Int16 short 2 bytes
@@ -466,7 +467,8 @@ List<int> ii_pack(
   final byteData = list.buffer.asByteData();
   byteData.setInt32(0, val1, endian);
   byteData.setInt32(4, val2, endian);
-  return [...list]; //<int>[]..addAll(result);
+  return list;
+  //[...list]; //<int>[]..addAll(result);
 }
 
 /// read 2 Int32
@@ -492,7 +494,8 @@ List<int> ihihih_pack(
   byteData.setInt32(12, val5, endian);
   byteData.setInt16(16, val6, endian);
 
-  return [...list]; //<int>[]..addAll(result);
+  return list;
+  // [...list]; //<int>[]..addAll(result);
 }
 
 /// read Int32 Int16 | Int32 Int16 | Int32 Int16
