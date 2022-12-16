@@ -312,7 +312,7 @@ class CoreConnection {
             socket,
             context: sslContext.context,
             onBadCertificate: sslContext.onBadCertificate,
-            keyLog: sslContext.keyLog,
+            // keyLog: sslContext.keyLog,
             supportedProtocols: sslContext.supportedProtocols,
           ).then(completer.complete).catchError(completer.completeError);
         }
