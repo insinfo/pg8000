@@ -47,6 +47,7 @@ jobs:
       - name: Create additional user
         run: |
           sudo -u postgres psql --version 
+          sudo -u postgres psql -t -P format=unaligned -c 'show hba_file';
           sudo -u postgres psql --command="SELECT * FROM pg_hba_file_rules();"
           sudo -u postgres psql --command="SHOW password_encryption;"   
           sudo -u postgres psql --command="CREATE ROLE sisadmin WITH LOGIN SUPERUSER PASSWORD 's1sadm1n'" --command="\du"
