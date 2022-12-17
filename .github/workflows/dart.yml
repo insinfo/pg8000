@@ -42,6 +42,7 @@ jobs:
     steps:
       - name: Start PostgreSQL on Ubuntu
         run: |
+          sudo lsb_release -a
           sudo systemctl start postgresql.service          
           pg_isready
       - name: Create additional user
@@ -62,8 +63,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Copy pg_hba
         run: |          
-          sudo ls
-          sudo cat /etc/postgresql/14/main/pg_hba.conf
+          sudo ls          
           sudo cp ci/pg_hba.conf /etc/postgresql/14/main/pg_hba.conf
           sudo systemctl restart postgresql.service
           pg_isready
