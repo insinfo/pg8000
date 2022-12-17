@@ -49,7 +49,7 @@ I'm only able to do this implementation thanks to several open source projects, 
 - [x] ascii
 
 #### extreme experimental
-- [x] Allow reconnection attempt if postgresql was started (allowAttemptToReconnect: true)
+- [x] Allow reconnection attempt if postgresql was restarted (allowAttemptToReconnect: true)
 
 
 ## Creating a connection with SSL and executing a simple select
