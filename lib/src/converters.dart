@@ -299,10 +299,14 @@ class TypeConverter {
     return _parse_array(data, int_in);
   }
 
+  /// [data] String
+  /// return List<int>
   dynamic bytes_in(data) {
-    //return bytes.fromhex(data[2:])
-    print('bytes_in ${data.runtimeType}');
-    hex.decode('abcdef');
+    if (data is String) {
+      final bytesString = data.substring(2); //data.replaceFirst("\\x", '');
+      return hex.decode(bytesString);
+    }
+    return data;
   }
 
   dynamic string_in(data) {
@@ -424,11 +428,7 @@ class TypeConverter {
       buf.write(encodeValueDefault(v));
     }
     buf.write(']');
-    if (pgType != null)
-      buf
-        ..write('::')
-        ..write(pgType)
-        ..write('[]');
+    if (pgType != null) buf..write('::')..write(pgType)..write('[]');
     return buf.toString();
   }
 
@@ -494,9 +494,10 @@ class TypeConverter {
   /// dart type to postgresql
   /// based in python pg8000
   /// TODO implement ip4_address type and money
-  /// based in https://github.com/dart-protocol/ip/tree/master/lib/src/ip
+  /// based on python pg8000
+  /// https://github.com/dart-protocol/ip/tree/master/lib/src/ip
   /// https://pub.dev/packages/money
-  encodeValue2(dynamic value, Type type) {
+  encodeValuePg8000(dynamic value, Type type) {
     //print('encodeValue2 ${value.runtimeType}');
     switch (type) {
       case DateTime:
@@ -529,7 +530,8 @@ class TypeConverter {
 
   /// mapeia tipos de dados Dart para funcões que convertem
   /// este tipo para o tipo Postgresql adequado
-  encodeValue(dynamic value, String type) {
+  /// based on https://github.com/tomyeh/postgresql
+  encodeValueTomyeh(dynamic value, String type) {
     if (type == null) return encodeValueDefault(value);
     if (value == null) return 'null';
 
@@ -589,7 +591,7 @@ class TypeConverter {
 
         final t = type.toLowerCase(); //backward compatible
         if (t != type)
-          return encodeValue(
+          return encodeValueTomyeh(
             value,
             t,
           );
@@ -609,8 +611,11 @@ class TypeConverter {
     throw _error('bytea encoding not implemented. Pull requests welcome ;)');
   }
 
-  /// decode tipos de dados PostgreSQL o tipos dart adequado
-  decodeValue2(String value, int pgType) {
+  /// decode PostgreSQL data type to dart
+  /// based on python pg8000
+  /// https://github.com/dart-protocol/ip/tree/master/lib/src/ip
+  decodeValuePg8000(String value, int pgType) {
+    print('decodeValuePg8000 pgType: $pgType');
     switch (pgType) {
       case BIGINT:
         return int_in(value); // int8
@@ -622,8 +627,8 @@ class TypeConverter {
         //return bool_array_in(value); // bool[]
         return value;
       case BYTES:
-        //return bytes_in(value); // bytea
-        return value;
+        return bytes_in(value); // bytea
+      //return value;
       case BYTES_ARRAY:
         //return bytes_array_in(value); // bytea[]
         return value;
@@ -744,10 +749,14 @@ class TypeConverter {
         return value;
       case XID:
         return int_in(value); // xid
+      default:
+        return value;
     }
   }
 
-  decodeValue(String value, int pgType) {
+  /// based on https://github.com/tomyeh/postgresql
+  ///
+  decodeValueTomyeh(String value, int pgType) {
     switch (pgType) {
       case BOOLEAN:
         return value == 't';
@@ -958,7 +967,7 @@ class TypeConverter {
 
     final result = [];
     for (final v in value.split(','))
-      result.add(v == 'NULL' ? null : decodeValue(v, pgType));
+      result.add(v == 'NULL' ? null : decodeValueTomyeh(v, pgType));
     return result;
   }
 
@@ -967,7 +976,7 @@ class TypeConverter {
       //func = PY_TYPES[value.runtimeType];
       //return encodeValue(value, null);
 
-      return encodeValue2(value, value.runtimeType);
+      return encodeValuePg8000(value, value.runtimeType);
     } catch (e) {
       print('make_param error $e');
     }

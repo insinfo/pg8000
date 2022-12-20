@@ -889,8 +889,8 @@ class CoreConnection {
       } else {
         var bytes = data.sublist(idx, idx + vlen);
         var stringVal = typeConverter.charsetDecode(bytes, textCharset);
-        //v = func(stringVal);
-        v = typeConverter.decodeValue(
+        //v = func(stringVal); decodeValue
+        v = typeConverter.decodeValuePg8000(
           stringVal,
           col.fieldType,
         );
