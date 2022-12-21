@@ -9,12 +9,14 @@ import 'server_info.dart';
 import 'utils/utils.dart';
 
 //enum
-class ArrayState {
-  static const InString = 1;
-  static const InEscape = 2;
-  static const InValue = 3;
-  static const Out = 4;
-}
+// class ArrayState {
+//   static const InString = 1;
+//   static const InEscape = 2;
+//   static const InValue = 3;
+//   static const Out = 4;
+// }
+
+enum ArrayState { InString, InEscape, InValue, Out }
 
 class TypeConverter {
   static const ANY_ARRAY = 2277;
@@ -107,12 +109,12 @@ class TypeConverter {
 
   TypeConverter(this.textCharset, this.serverInfo, {this.connectionName});
 
-  bool_in(data) {
+  bool bool_in(data) {
     return data == "t";
   }
 
   /// Dart bool para postgresql
-  dynamic bool_out(data) {
+  String bool_out(data) {
     //return "true" if v else "false"
     return data != 0 && data != null && data != false && data != ''
         ? "true"
@@ -239,29 +241,31 @@ class TypeConverter {
     return jsonEncode(v);
   }
 
-  _parse_array(data, adapter) {
+  List<T> _parse_array<T>(String data, Function adapter) {
     var state = ArrayState.Out;
     var stack = [[]];
     var val = [];
+    var dataSplit = data.split('');
 
-    for (var c in data) {
+    for (var c in dataSplit) {
       if (state == ArrayState.InValue) {
-        if (["}", ","].contains(c)) {
+        if (['}', ','].contains(c)) {
           var value = val.join();
-          stack[0].add(value == "NULL" ? null : adapter(value));
+          stack[stack.length - 1].add(value == "NULL" ? null : adapter(value));
           state = ArrayState.Out;
         } else {
           val.add(c);
         }
       }
+
       if (state == ArrayState.Out) {
-        if (c == "{") {
+        if (c == '{') {
           var a = [];
-          stack[0].add(a);
+          stack[stack.length - 1].add(a);
           stack.add(a);
-        } else if (c == "}") {
+        } else if (c == '}') {
           stack.removeLast();
-        } else if (c == ",") {
+        } else if (c == ',') {
           //pass;
         } else if (c == '"') {
           val = [];
@@ -272,11 +276,11 @@ class TypeConverter {
         }
       } else if (state == ArrayState.InString) {
         if (c == '"') {
-          stack[0].add(adapter(val.join()));
+          stack[stack.length - 1].add(adapter(val.join()));
           state = ArrayState.Out;
-        } else if (c == "\\")
+        } else if (c == "\\") {
           state = ArrayState.InEscape;
-        else {
+        } else {
           val.add(c);
         }
       } else if (state == ArrayState.InEscape) {
@@ -284,29 +288,78 @@ class TypeConverter {
         state = ArrayState.InString;
       }
     }
-    return stack[0][0];
+    var result = stack[0][0];
+    if (result is List) {
+      return result.map((e) => e as T).toList();
+    }
+    return null;
   }
 
   dynamic bool_array_in(dynamic data) {
-    return _parse_array(data, bool_in);
+    return _parse_array<bool>(data, bool_in);
   }
 
   dynamic bytes_array_in(dynamic data) {
-    return _parse_array(data, bytes_in);
+    return _parse_array<Uint8List>(data, bytes_in);
   }
 
+  /// Returns List<int>
   dynamic int_array_in(dynamic data) {
-    return _parse_array(data, int_in);
+    return _parse_array<int>(data, int_in);
+  }
+
+  dynamic vector_in(String data) {
+    var vals = data.split('');
+    return vals.map((v) => int.parse(v)).toList();
+    //return [int(v) for v in data.split()]
+  }
+
+  /// Returns List<String>
+  List<String> string_array_in(dynamic data) {
+    return _parse_array<String>(data, string_in);
+  }
+
+  /// Returns List<String>
+  List<String> interval_array_in(dynamic data) {
+    return _parse_array<String>(data, string_in);
+  }
+
+  List<DateTime> date_array_in(dynamic data) {
+    return _parse_array<DateTime>(data, date_in);
+  }
+
+  List<double> float_array_in(dynamic data) {
+    return _parse_array<double>(data, float_in);
+  }
+
+  List<double> numeric_array_in(dynamic data) {
+    return _parse_array<double>(data, float_in);
+  }
+
+  List<Map> json_array_in(dynamic data) {
+    return _parse_array<Map>(data, json_in);
+  }
+
+  List<String> time_array_in(dynamic data) {
+    return _parse_array<String>(data, string_in);
+  }
+
+  List<DateTime> timestamp_array_in(dynamic data) {
+    return _parse_array<DateTime>(data, timestamp_in);
+  }
+
+  List<DateTime> timestamptz_array_in(dynamic data) {
+    return _parse_array<DateTime>(data, timestamptz_in);
   }
 
   /// [data] String
   /// return List<int>
   dynamic bytes_in(data) {
-    if (data is String) {
-      final bytesString = data.substring(2); //data.replaceFirst("\\x", '');
-      return hex.decode(bytesString);
-    }
-    return data;
+    //if (data is String) {
+    final bytesString = data.substring(2); //data.replaceFirst("\\x", '');
+    return hex.decode(bytesString);
+    //}
+    //return data;
   }
 
   dynamic string_in(data) {
@@ -317,7 +370,7 @@ class TypeConverter {
     return int.parse(data);
   }
 
-  dynamic double_in(data) {
+  dynamic float_in(data) {
     return double.parse(data);
   }
 
@@ -364,6 +417,7 @@ class TypeConverter {
   ///
   /// TODO use https://github.com/AKushWarrior/instant/tree/master/lib/src
   DateTime timestamptz_in(value) {
+    // print('timestamptz_in $value ${serverInfo.timeZone}');
 // Built in Dart dates can either be local time or utc. Which means that the
     // the postgresql timezone parameter for the connection must be either set
     // to UTC, or the local time of the server on which the client is running.
@@ -615,7 +669,7 @@ class TypeConverter {
   /// based on python pg8000
   /// https://github.com/dart-protocol/ip/tree/master/lib/src/ip
   decodeValuePg8000(String value, int pgType) {
-    print('decodeValuePg8000 pgType: $pgType');
+    //print('decodeValuePg8000 pgType: $pgType');
     switch (pgType) {
       case BIGINT:
         return int_in(value); // int8
@@ -624,43 +678,38 @@ class TypeConverter {
       case BOOLEAN:
         return bool_in(value); // bool
       case BOOLEAN_ARRAY:
-        //return bool_array_in(value); // bool[]
-        return value;
+        return bool_array_in(value); // bool[]
       case BYTES:
         return bytes_in(value); // bytea
-      //return value;
       case BYTES_ARRAY:
-        //return bytes_array_in(value); // bytea[]
-        return value;
+        return bytes_array_in(value); // bytea[]
       case CHAR:
         return string_in(value); // char
       case CHAR_ARRAY:
-        //return string_array_in(value); // char[]
-        return value;
+        return string_array_in(value); // char[]
       case CIDR_ARRAY:
         //return cidr_array_in(value); // cidr[]
-        return value;
+        return string_array_in(value);
       case CSTRING:
         return string_in(value); // cstring
       case CSTRING_ARRAY:
-        //return string_array_in(value); // cstring[]
-        return value;
+        return string_array_in(value); // cstring[]
       case DATE:
         return date_in(value); // date
       case DATE_ARRAY:
-        //return date_array_in(value); // date[]
+        return date_array_in(value); // date[]
         return value;
       case FLOAT:
-        return double_in(value); // _FLOAT8 _FLOAT4 701
+        return float_in(value); // _FLOAT8 _FLOAT4 701
       case FLOAT_ARRAY:
-        //return float_array_in(value); // float8[]
+        return float_array_in(value); // float8[]
         return value;
       case INET:
         // return inet_in(value); // inet
         return value;
       case INET_ARRAY:
         //return inet_array_in(value); // inet[]
-        return value;
+        return string_array_in(value);
       case INTEGER:
         return int_in(value); //INT4 INT2 BIGINT
       case INTEGER_ARRAY:
@@ -668,87 +717,82 @@ class TypeConverter {
       case JSON:
         return json_in(value); // json
       case JSON_ARRAY:
-        //return json_array_in(value); // json[]
+        return json_array_in(value); // json[]
         return value;
       case JSONB:
         return json_in(value); // jsonb
       case JSONB_ARRAY:
-        //return json_array_in(value); // jsonb[]
+        return json_array_in(value); // jsonb[]
         return value;
       case MACADDR:
         return string_in(value); // MACADDR type
       case MONEY:
         return string_in(value); // money
       case MONEY_ARRAY:
-        //return string_array_in(value); // money[]
-        return value;
+        return string_array_in(value); // money[]
       case NAME:
         return string_in(value); // name
       case NAME_ARRAY:
-        //return string_array_in(value); // name[]
-        return value;
+        return string_array_in(value); // name[]
       case NUMERIC:
         return numeric_in(value); // numeric
       case NUMERIC_ARRAY:
-        // return numeric_array_in(value); // numeric[]
-        return value;
+        return numeric_array_in(value); // numeric[]
       case OID:
         return int_in(value); // oid
+      case _OID_ARRAY:
+        return int_array_in(value); // oid[]
       case INTERVAL:
         return interval_in(value); // interval
       case INTERVAL_ARRAY:
-        //return interval_array_in(value); // interval[]
-        return value;
+        return interval_array_in(value); // interval[]
       case REAL:
-        return double_in(value); // float4
+        return float_in(value); // float4
       case REAL_ARRAY:
-        //return float_array_in(value); // float4[]
-        return value;
+        return float_array_in(value); // float4[]
       case SMALLINT:
         return int_in(value); // int2
       case SMALLINT_ARRAY:
         return int_array_in(value); // int2[]
       case SMALLINT_VECTOR:
-        //return vector_in(value); // int2vector
-        return value;
+        return vector_in(value); // int2vector
       case TEXT:
         return string_in(value); // text
       case TEXT_ARRAY:
-        //return string_array_in(value); // text[]
-        return value;
+        return string_array_in(value); // text[]
       case TIME:
         //return time_in(value); // time
-        return value;
+        return string_in(value);
       case TIME_ARRAY:
-        //return time_array_in(value); // time[]
-        return value;
+        return time_array_in(value); // time[]
       case INTERVAL:
         return interval_in(value); // interval
       case TIMESTAMP:
         return timestamp_in(value); // timestamp
       case TIMESTAMP_ARRAY:
-        //return timestamp_array_in(value); // timestamp
-        return value;
+        return timestamp_array_in(value); // timestamp
       case TIMESTAMPTZ:
         return timestamptz_in(value); // timestamptz
       case TIMESTAMPTZ_ARRAY:
-        //return timestamptz_array_in(value); // timestamptz
-        return value;
+        return timestamptz_array_in(value); // timestamptz
       case UNKNOWN:
         return string_in(value); // unknown
       case UUID_ARRAY:
-        //return uuid_array_in(value); // uuid[]
-        return value;
+        return string_array_in(value); // uuid[]
       case UUID_TYPE:
         //return uuid_in(value); // uuid
-        return value;
+        return string_in(value);
       case VARCHAR:
         return string_in(value); // varchar
       case VARCHAR_ARRAY:
-        //return string_array_in(value); // varchar[]
-        return value;
+        return string_array_in(value); // varchar[]
       case XID:
         return int_in(value); // xid
+      case _VARBIT:
+        return string_in(value); // varbit(10)
+      case _VARBIT_ARRAY:
+        return string_array_in(value); // varbit[]
+
       default:
         return value;
     }
