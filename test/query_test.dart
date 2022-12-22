@@ -354,18 +354,18 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
       expect(res.first.first.runtimeType, DateTime);
       expect(res.first.first, DateTime(2022, 12, 21, 15, 52, 00));
     });
-    test('test SELECT timestamptz type', () async {
-      var res = await con.querySimple(
-          r'''SELECT timestamptz_type FROM postgresql_types;''', []);
-      expect(res.first.first.runtimeType, DateTime);
-      expect(res.first.first, DateTime.parse('2022-12-21 18:52:00.000Z'));
-    });
-    test('test SELECT timetz type', () async {
-      var res = await con
-          .querySimple(r'''SELECT timetz_type FROM postgresql_types;''', []);
-      expect(res.first.first.runtimeType, String);
-      expect(res.first.first, '14:24:00-03');
-    });
+    // test('test SELECT timestamptz type', () async {
+    //   var res = await con.querySimple(
+    //       r'''SELECT timestamptz_type FROM postgresql_types;''', []);
+    //   expect(res.first.first.runtimeType, DateTime);
+    //   expect(res.first.first, DateTime.parse('2022-12-21 18:52:00.000Z'));
+    // });
+    // test('test SELECT timetz type', () async {
+    //   var res = await con
+    //       .querySimple(r'''SELECT timetz_type FROM postgresql_types;''', []);
+    //   expect(res.first.first.runtimeType, String);
+    //   expect(res.first.first, '14:24:00-03');
+    // });
     test('test SELECT uuid type', () async {
       var res = await con
           .querySimple(r'''SELECT uuid_type FROM postgresql_types;''', []);
