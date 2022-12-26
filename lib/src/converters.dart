@@ -545,46 +545,46 @@ class TypeConverter {
     return PostgresqlException(msg, connectionName: connectionName);
   }
 
-  /// dart type to postgresql
+  /// convert from dart types to posgresql types
   /// based in python pg8000
-  /// TODO implement ip4_address type and money
-  /// based on python pg8000
-  /// https://github.com/dart-protocol/ip/tree/master/lib/src/ip
-  /// https://pub.dev/packages/money
-  encodeValuePg8000(dynamic value, Type type) {
-    //print('encodeValue2 ${value.runtimeType}');
-    switch (type) {
-      case DateTime:
-        return datetime_out(value);
-      case bool:
-        return bool_out(value);
-      //bytearray Iterable<int>
-      case Uint8List:
-        return bytes_out(value);
-      case Map:
-        return json_out(value);
-      case double:
-        return float_out(value);
-      case Null:
-        return null_out(value);
-      case String:
-        return string_out(value);
-      case int:
-        return int_out(value);
-      case BigInt:
-        return value.toString();
-      case num:
-        return numeric_out(value);
-      case Iterable:
-        return array_out(value);
-      //Iterable<int>
-      //if (value is Iterable) return encodeArray(value);
+  // TODO implement ip4_address type and money 
+  // https://github.com/dart-protocol/ip/tree/master/lib/src/ip
+  // https://pub.dev/packages/money
+  encodeValuePg8000(dynamic value, Type type) {     
+    if (value is DateTime) {
+      return datetime_out(value);
+    } else if (value is bool) {
+      return bool_out(value);
+    } else if (value is Uint8List) {
+      return bytes_out(value);
+    } else if (value is Map) {
+      return json_out(value);
+    } else if (value is double) {
+      return float_out(value);
+    } else if (value == null) {
+      return null_out(value);
+    } else if (value is String) {
+      return string_out(value);
+    } else if (value is int) {
+      return int_out(value);
+    } else if (value is BigInt) {
+      return value.toString();
+    } else if (value is num) {
+      return numeric_out(value);
+    } else if (value is Iterable) {      
+      return array_out(value);
+    } else if (value is List<Object>) {      
+      return array_out(value);
+    }else{
+      return value.toString();
     }
+    //Iterable<int>
+    //if (value is Iterable) return encodeArray(value);
   }
 
-  /// mapeia tipos de dados Dart para funcões que convertem
-  /// este tipo para o tipo Postgresql adequado
-  /// based on https://github.com/tomyeh/postgresql
+  /// convert from dart types to posgresql types
+  /// based on tomyeh implementation  
+  // based on https://github.com/tomyeh/postgresql
   encodeValueTomyeh(dynamic value, String type) {
     if (type == null) return encodeValueDefault(value);
     if (value == null) return 'null';
@@ -792,7 +792,6 @@ class TypeConverter {
         return string_in(value); // varbit(10)
       case _VARBIT_ARRAY:
         return string_array_in(value); // varbit[]
-
       default:
         return value;
     }
@@ -1019,7 +1018,6 @@ class TypeConverter {
     try {
       //func = PY_TYPES[value.runtimeType];
       //return encodeValue(value, null);
-
       return encodeValuePg8000(value, value.runtimeType);
     } catch (e) {
       print('make_param error $e');
@@ -1028,13 +1026,13 @@ class TypeConverter {
     return string_out(value);
   }
 
-  /// convert prepared params from types dart to posgresql types
+  /// convert prepared params from dart types to posgresql types
   List makeParams(List values) {
-    var result = [];
-    for (var v in values) {
-      result.add(makeParam(v));
+    var results = [];
+    for (var v in values) {      
+      results.add(makeParam(v));
     }
-    return result;
+    return results;
   }
 
   /// PostgreSQL encodings:

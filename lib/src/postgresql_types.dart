@@ -4,8 +4,11 @@ class PostgreTypes {
 
   const PostgreTypes(this.value);
 
-  /// bit_type  bit(1)
+  /// bit_type  bit(1) _BIT = 1560,
   static const PostgreTypes bit = const PostgreTypes(1560);
+  ///  _BIT_ARRAY = 1561
+  static const PostgreTypes bitArray = const PostgreTypes(1561);
+
   static const PostgreTypes bool = const PostgreTypes(16);
   static const PostgreTypes box = const PostgreTypes(603);
   static const PostgreTypes bytea = const PostgreTypes(17);
@@ -144,12 +147,16 @@ class PostgreTypes {
   /// oid	any	numeric object identifier	564182
   static const PostgreTypes oid = const PostgreTypes(26);
   static const PostgreTypes oidArray = const PostgreTypes(1028);
-  //  _BIT_ARRAY = 1561,  ,_NAME_ARRAY = 1003,
+
+  static const PostgreTypes nameArray = const PostgreTypes(1003);
+  static const PostgreTypes name = const PostgreTypes(19);
 
   static String asString(PostgreTypes tp) {
     switch (tp.value) {
       case 1560:
         return 'bit';
+      case 1561:
+        return 'bitArray';
       case 16:
         return 'bool';
       case 603:
@@ -276,6 +283,10 @@ class PostgreTypes {
         return 'oidArray';
       case 26:
         return 'oid';
+      case 1003:
+        return 'nameArray';
+      case 19:
+        return 'name';
 
       default:
         return 'unknow';

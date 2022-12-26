@@ -48,10 +48,12 @@ class Query {
   /// for prepared named statement
 
   int prepareStatementId = 0;
+  bool isUnamedStatement = false;
 
   /// generate unique name for named prepared Statement
-  String get statementName => '$prepareStatementId'
-      .padLeft(12, '0'); //dargres_statement_$prepareStatementId
+  String get statementName => isUnamedStatement == false
+      ? '$prepareStatementId'.padLeft(12, '0')
+      : ''; //dargres_statement_$prepareStatementId
 
   QueryState state = QueryState.queued;
 

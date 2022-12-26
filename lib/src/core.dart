@@ -345,29 +345,20 @@ class CoreConnection {
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Future<List<Row>> querySimple(String statement, [values]) {
-    return querySimpleAsStream(statement, values).toList();
+  Future<List<Row>> querySimple(String statement) {
+    return querySimpleAsStream(statement).toList();
   }
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Stream<Row> querySimpleAsStream(String statement, [params]) {
+  Stream<Row> querySimpleAsStream(String statement) {
     try {
       // if (params != null) {
       //   statement = substitute(statement, params, typeConverter.encodeValue);
       // }
-      Query query;
-      if (params != null && params.isNotEmpty) {
-        for (var i = 0; i < params.length; i++) {
-          var param = params[i];
-          statement =
-              statement.replaceAll(r'$' + (i + 1).toString(), "'$param'");
-        }
-        query = Query(statement);
-      } else {
-        query = Query(statement);
-      }
+      Query query = Query(statement);
+
       //var query = Query(statement);
       query.state = QueryState.init;
       query.queryType = QueryType.simple;
@@ -380,27 +371,25 @@ class CoreConnection {
   }
 
   /// execute a prepared unnamed statement
-  /// Example: com.executeUnnamed('select * from crud_teste.pessoas limit \$1', [1]);
-  // Stream<Row> executeUnnamed(String statement, List params,
-  //     [List oids = const []]) {
-  //   try {
-  //     var query = Query(statement);
-  //     query.state = QueryState.init;
-  //     query.queryType = QueryType.unnamedStatement;
-  //     query.addPreparedParams(params, oids);
-  //     _enqueueQuery(query);
-  //     return query.stream;
-  //   } catch (ex, st) {
-  //     return Stream.fromFuture(Future.error(ex, st));
-  //   }
-  // }
+  /// Example: com.queryUnnamed('select * from crud_teste.pessoas limit \$1', [1]);
+  Future<List<Row>> queryUnnamed(String sql, List params) async {
+    try {
+      var statement =
+          await prepareStatement(sql, params, isUnamedStatement: true);
+      return await executeStatement(statement);
+    } catch (ex, st) {
+      return Future.error(ex, st);
+    }
+  }
 
   /// return Query prepared with statementName for execute with (executeStatement) method
-  Future<Query> prepareStatement(String statement, List params) async {
+  Future<Query> prepareStatement(String statement, List params,
+      {bool isUnamedStatement = false}) async {
     try {
       var query = Query(statement, preparedParams: params);
       query.state = QueryState.init;
       query.error = null;
+      query.isUnamedStatement = isUnamedStatement;
       query.prepareStatementId = prepareStatementId;
       prepareStatementId++;
       query.queryType = QueryType.prepareStatement;
@@ -611,7 +600,7 @@ class CoreConnection {
 
   Future<dynamic> _sendPreparedStatement(Query query) async {
     //print('send prepare_statement');
-    var statementNameBytes = [
+    final statementNameBytes = [
       ...typeConverter.charsetEncode(query.statementName, defaultCodeCharset),
       NULL_BYTE
     ];
@@ -622,12 +611,14 @@ class CoreConnection {
   }
 
   Future<dynamic> _sendExecuteNamedStatement(Query query) async {
-    //print('send namedStatement:');
+    //print('_sendExecuteNamedStatement:');
+    //print('_sendExecuteNamedStatement antes params: ${query.preparedParams}');
     var params = typeConverter.makeParams(query.preparedParams);
-    var statementNameBytes = [
+    final statementNameBytes = [
       ...typeConverter.charsetEncode(query.statementName, defaultCodeCharset),
       NULL_BYTE
     ];
+    // print('_sendExecuteNamedStatement params: $params');
     this._send_BIND(statementNameBytes, params);
     this._send_EXECUTE();
     this._sock_write(SYNC_MSG);
@@ -1356,11 +1347,11 @@ class CoreConnection {
       // _socket = null;
       _destroy();
     }
-    print('CoreConnection closed');
+   // print('CoreConnection closed');
   }
 
   void _destroy() {
-    print('CoreConnection _destroy');
+   // print('CoreConnection _destroy');
     hasConnected = false;
     _connectionState = ConnectionState.closed;
     this._socket.destroy();

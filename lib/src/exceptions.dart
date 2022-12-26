@@ -27,7 +27,7 @@ class PostgresqlException implements Exception {
   @override
   String toString() {
     if (serverMessage != null) {
-      var m = serverMessage.toString();
+      var m = 'PostgresqlException: '+serverMessage.toString();
       if (sql != null) {
         m += '\r\nSQL: $sql';
       }
@@ -35,6 +35,7 @@ class PostgresqlException implements Exception {
     }
 
     final buf = StringBuffer(message);
+     buf.write('PostgresqlException: ');
     if (errorCode != null) {
       buf.write(' (');
       buf..write(errorCode);
