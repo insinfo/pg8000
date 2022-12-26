@@ -384,7 +384,53 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
       expect(res.first.first.runtimeType, String);
       expect(res.first.first, 'varchar test');
     });
-
+    test('test SELECT xml type', () async {
+      var res = await con
+          .querySimple(r'''SELECT xml_type FROM postgresql_types;''', []);
+      expect(res.first.first.runtimeType, String);
+      expect(res.first.first,
+          '<book><title>Manual</title><chapter>...</chapter></book>');
+    });
+    test('test SELECT xid type', () async {
+      var res = await con
+          .querySimple(r'''SELECT xid_type FROM postgresql_types;''', []);
+      expect(res.first.first.runtimeType, int);
+      expect(res.first.first, 123);
+    });
+    test('test SELECT varchar array type', () async {
+      var res = await con.querySimple(
+          r'''SELECT varchar_array_type FROM postgresql_types;''', []);
+      expect(res.first.first.runtimeType.toString(), 'List<String>');
+      expect(res.first.first, ['a', 'b']);
+    });
+    test('test SELECT int4 array type', () async {
+      var res = await con.querySimple(
+          r'''SELECT int4_array_type FROM postgresql_types;''', []);
+      expect(res.first.first.runtimeType.toString(), 'List<int>');
+      expect(res.first.first, [1, 2, null]);
+    });
+    test('test SELECT bool array type', () async {
+      var res = await con.querySimple(
+          r'''SELECT bool_array_type FROM postgresql_types;''', []);
+      expect(res.first.first.runtimeType.toString(), 'List<bool>');
+      expect(res.first.first, [true, false, null]);
+    });
+    test('test SELECT bytea array type', () async {
+      var res = await con.querySimple(
+          r'''SELECT bytea_array_type FROM postgresql_types;''', []);
+      expect(res.first.first.runtimeType.toString(), 'List<Uint8List>');
+      expect(res.first.first, [
+        [222, 173, 190, 239],
+        null
+      ]);
+    });
+    test('test SELECT char array type', () async {
+      var res = await con.querySimple(
+          r'''SELECT char_array_type FROM postgresql_types;''', []);
+      expect(res.first.first.runtimeType.toString(), 'List<String>');
+      expect(res.first.first, ['a', 'b']);
+    });
+//
     test('test select clear', () async {
       await con.execute("CREATE TEMPORARY TABLE t1 (f1 int primary key, "
           "f2 bigint not null, f3 varchar(50) null) ");
