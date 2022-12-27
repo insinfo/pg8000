@@ -10,15 +10,15 @@ class PostgresqlException implements Exception {
     this.sql,
   });
 
-  final String message;
+  final String? message;
 
   /// Note the connection name can be null in some cases when thrown by pool.
-  final String connectionName;
+  final String? connectionName;
 
-  final ServerNotice serverMessage;
+  final ServerNotice? serverMessage;
 
   /// Note may be null.
-  final Object errorCode;
+  final Object? errorCode;
 
   final dynamic serverErrorCode;
 
@@ -34,7 +34,7 @@ class PostgresqlException implements Exception {
       return m;
     }
 
-    final buf = StringBuffer(message);
+    final buf = StringBuffer(message ?? '');
      buf.write('PostgresqlException: ');
     if (errorCode != null) {
       buf.write(' (');

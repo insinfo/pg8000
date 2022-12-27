@@ -8,22 +8,23 @@ import 'package:matcher/matcher.dart';
 import 'package:dargres/src/dependencies/buffer_terrier/raw_data.dart';
 import 'package:dargres/src/dependencies/buffer_terrier/raw_value.dart';
 
+
 /// Returns a matcher that matches integers with the bytes.
 /// Uses [DebugHexEncoder] for describing problems.
-Matcher byteListEquals(Iterable<int> expected, {DebugHexEncoder format}) {
+Matcher byteListEquals(Iterable<int> expected, {DebugHexEncoder? format}) {
   return _ByteListEquals(expected.toList(), format: format);
 }
 
 /// Returns a matcher that matches [RawEncodable] with another .
 /// Uses [DebugHexEncoder] for describing problems.
-Matcher selfEncoderEquals(RawEncodable expected, {DebugHexEncoder format}) {
+Matcher selfEncoderEquals(RawEncodable expected, {DebugHexEncoder? format}) {
   return _SelfEncoderEquals(expected, format: format);
 }
 
 /// Returns a matcher that matches [RawEncodable] with the bytes.
 /// Uses [DebugHexEncoder] for describing problems.
 Matcher selfEncoderEqualsBytes(Iterable<int> expected,
-    {DebugHexEncoder format}) {
+    {DebugHexEncoder? format}) {
   return _SelfEncoderEquals(RawData(expected.toList()), format: format);
 }
 
@@ -31,7 +32,7 @@ class _ByteListEquals extends Matcher {
   final List _expected;
   final DebugHexEncoder format;
 
-  _ByteListEquals(this._expected, {DebugHexEncoder format})
+  _ByteListEquals(this._expected, {DebugHexEncoder? format})
       : this.format = format ?? const DebugHexEncoder();
 
   @override
@@ -46,7 +47,7 @@ class _ByteListEquals extends Matcher {
     if (item is List) {
       return mismatchDescription
           .replace("Actually hex:")
-          .add(format.convert(item, expected: _expected));
+          .add(format.convert(item, expected: _expected as List<int>));
     } else {
       return orderedEquals(_expected)
           .describeMismatch(item, mismatchDescription, matchState, verbose);
@@ -74,7 +75,7 @@ class _SelfEncoderEquals extends Matcher {
   final _ByteListEquals _equals;
   final Matcher _fallbackEquals;
 
-  _SelfEncoderEquals(RawEncodable expected, {DebugHexEncoder format})
+  _SelfEncoderEquals(RawEncodable expected, {DebugHexEncoder? format})
       : this._equals =
             _ByteListEquals(expected.toUint8ListViewOrCopy(), format: format),
         this._fallbackEquals = equals(expected);
@@ -174,10 +175,10 @@ void main() {
     });
 
     group("numbers", () {
-      RawWriter writer;
-      num written;
-      List<int> expected;
-      int expectedIndex;
+      late RawWriter writer;
+      num written = 1;
+      List<int> expected=[];
+      int expectedIndex = 3;
       void littleEndian(int length) {
         final expectedCopy = List<int>.from(expected);
         final firstIndex = writer.length;
@@ -197,7 +198,7 @@ void main() {
         });
 
         test("simple call", () {
-          writer.writeUint8(written);
+          writer.writeUint8(written as int);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
@@ -220,20 +221,20 @@ void main() {
         });
 
         test("simple call", () {
-          writer.writeUint16(written);
+          writer.writeUint16(written as int);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("big-endian", () {
-          writer.writeUint16(written, Endian.big);
+          writer.writeUint16(written as int, Endian.big);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("little-endian", () {
           littleEndian(2);
-          writer.writeUint16(written, Endian.little);
+          writer.writeUint16(written as int, Endian.little);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
@@ -256,20 +257,20 @@ void main() {
         });
 
         test("simple call", () {
-          writer.writeUint32(written);
+          writer.writeUint32(written as int);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("big-endian", () {
-          writer.writeUint32(written, Endian.big);
+          writer.writeUint32(written as int, Endian.big);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("little-endian", () {
           littleEndian(4);
-          writer.writeUint32(written, Endian.little);
+          writer.writeUint32(written as int, Endian.little);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
@@ -292,7 +293,7 @@ void main() {
         });
 
         test("simple call", () {
-          writer.writeInt8(written);
+          writer.writeInt8(written as int);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
@@ -301,7 +302,7 @@ void main() {
           writer = RawWriter(capacity: 2);
           writer.length = 2;
           expect(writer.toUint8List(copy: false).buffer.lengthInBytes, 2);
-          writer.writeInt8(written);
+          writer.writeInt8(written as int);
           expect(writer.toUint8List(), byteListEquals(expected));
         });
       });
@@ -316,20 +317,20 @@ void main() {
         });
 
         test("simple call", () {
-          writer.writeInt16(written);
+          writer.writeInt16(written as int);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("big-endian", () {
-          writer.writeInt16(written, Endian.big);
+          writer.writeInt16(written as int, Endian.big);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("little-endian", () {
           littleEndian(2);
-          writer.writeInt16(written, Endian.little);
+          writer.writeInt16(written as int, Endian.little);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
@@ -338,7 +339,7 @@ void main() {
           writer = RawWriter(capacity: 2 + 1);
           writer.length = 2;
           expect(writer.toUint8List(copy: false).buffer.lengthInBytes, 2 + 1);
-          writer.writeInt16(written);
+          writer.writeInt16(written as int);
           expect(writer.toUint8List(), byteListEquals(expected));
         });
       });
@@ -353,20 +354,20 @@ void main() {
         });
 
         test("simple call", () {
-          writer.writeInt32(written);
+          writer.writeInt32(written as int);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("big-endian", () {
-          writer.writeInt32(written, Endian.big);
+          writer.writeInt32(written as int, Endian.big);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("little-endian", () {
           littleEndian(4);
-          writer.writeInt32(written, Endian.little);
+          writer.writeInt32(written as int, Endian.little);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
@@ -375,7 +376,7 @@ void main() {
           writer = RawWriter(capacity: 2 + 3);
           writer.length = 2;
           expect(writer.toUint8List(copy: false).buffer.lengthInBytes, 2 + 3);
-          writer.writeInt32(written);
+          writer.writeInt32(written as int);
           expect(writer.toUint8List(), byteListEquals(expected));
         });
       });
@@ -389,20 +390,20 @@ void main() {
         });
 
         test("simple call", () {
-          writer.writeFloat32(written);
+          writer.writeFloat32(written as double );
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("big-endian", () {
-          writer.writeFloat32(written, Endian.big);
+          writer.writeFloat32(written as double , Endian.big);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("little-endian", () {
           littleEndian(4);
-          writer.writeFloat32(written, Endian.little);
+          writer.writeFloat32(written as double , Endian.little);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
@@ -411,7 +412,7 @@ void main() {
           writer = RawWriter(capacity: 2 + 3);
           writer.length = 2;
           expect(writer.toUint8List(copy: false).buffer.lengthInBytes, 2 + 3);
-          writer.writeFloat32(written);
+          writer.writeFloat32(written as double );
           expect(writer.toUint8List(), byteListEquals(expected));
         });
       });
@@ -426,20 +427,20 @@ void main() {
         });
 
         test("simple call", () {
-          writer.writeFloat64(written);
+          writer.writeFloat64(written as double );
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("big-endian", () {
-          writer.writeFloat64(written, Endian.big);
+          writer.writeFloat64(written as double , Endian.big);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
 
         test("little-endian", () {
           littleEndian(8);
-          writer.writeFloat64(written, Endian.little);
+          writer.writeFloat64(written as double , Endian.little);
           expect(writer.toUint8List(), byteListEquals(expected));
           expect(writer.length, expectedIndex);
         });
@@ -448,7 +449,7 @@ void main() {
           writer = RawWriter(capacity: 2 + 7);
           writer.length = 2;
           expect(writer.toUint8List(copy: false).buffer.lengthInBytes, 2 + 7);
-          writer.writeFloat64(written);
+          writer.writeFloat64(written as double );
           expect(writer.toUint8List(), byteListEquals(expected));
         });
       });

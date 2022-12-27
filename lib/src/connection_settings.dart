@@ -10,13 +10,13 @@ class ConnectionSettings {
   String host;
   int port;
   String user;
-  String password;
-  String database;
+  String? password;
+  String? database;
   String textCharset;
 
   bool isUnixSocket = false;
   //SSLv3/TLS TLSv1.3
-  SslContext sslContext;
+  SslContext? sslContext;
 
   Duration connectionTimeout = Duration(seconds: 180);
 
@@ -24,16 +24,16 @@ class ConnectionSettings {
 
   bool tcpKeepalive = false;
 
-  String applicationName;
+  String? applicationName;
   dynamic replication;
-  String connectionName;
+  String? connectionName;
   bool allowAttemptToReconnect = false;
   ConnectionSettings({
-    this.user,
+    required this.user,
     this.host = 'localhost',
-    this.database,
+     this.database,
     this.port = 5432,
-    this.password,
+     this.password,
     this.sourceAddress = '',
     this.isUnixSocket = false,
     this.sslContext,

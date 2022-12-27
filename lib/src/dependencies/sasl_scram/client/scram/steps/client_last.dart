@@ -16,7 +16,7 @@ class ClientLast extends SaslStep {
 
   @override
   SaslStep transition(List<int> bytesReceivedFromServer,
-      {passwordDigestResolver passwordDigestResolver}) {
+      {passwordDigestResolver? passwordDigestResolver}) {
     final Map<String, dynamic> decodedMessage =
         parsePayload(utf8.decode(bytesReceivedFromServer));
     final serverSignature = base64.decode(decodedMessage['v'].toString());

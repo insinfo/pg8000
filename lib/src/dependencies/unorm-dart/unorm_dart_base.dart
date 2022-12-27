@@ -5,6 +5,7 @@ import 'recursive_decomposite_iterator.dart';
 import 'uchar.dart';
 import 'uchar_iterator.dart';
 
+
 enum _NormalizeMode { NFD, NFKD, NFC, NFKC }
 
 UnormIterator _createIterator(_NormalizeMode mode, String str) {
@@ -22,6 +23,7 @@ UnormIterator _createIterator(_NormalizeMode mode, String str) {
       return CompositeIterator(DecompositeIterator(
           RecursiveDecompositeIterator(UCharIterator(str), false)));
   }
+  // ignore: dead_code
   throw ArgumentError.value(mode, "mode", "Invalid normalization mode");
 }
 
@@ -29,7 +31,7 @@ String _normalize(_NormalizeMode mode, String str) {
   initUCharCache();
   UnormIterator iterator = _createIterator(mode, str);
   String ret = "";
-  UChar uchar;
+  UChar? uchar;
   while ((uchar = iterator.next()) != null) {
     ret += uchar.toString();
   }

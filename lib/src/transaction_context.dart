@@ -26,7 +26,7 @@ class TransactionContext {
       query.queryType = QueryType.simple;
       _enqueueQuery(query);
       await query.stream.toList();
-      return query.rowsAffected ?? 0;
+      return query.rowsAffected;
     } catch (ex, st) {
       return Future.error(ex, st);
     }

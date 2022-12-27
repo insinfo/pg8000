@@ -26,7 +26,7 @@ class ScramMechanism extends SaslMechanism {
 
     String username;
     if (specifyUsername) {
-      username = 'n=${prepUsername(credential.username)}';
+      username = 'n=${prepUsername(credential.username!)}';
     } else {
       username = 'n=*';
     }

@@ -12,7 +12,7 @@ class PostgreCidr {
   /// ex: 192.168.100.128/25
   String ip;
 
-  PostgreCidr({this.ip});
+  PostgreCidr({required this.ip});
 
   @override
   String toString() {
@@ -29,7 +29,7 @@ class PostgreInet {
 
   String ip;
 
-  PostgreInet({this.ip});
+  PostgreInet({required this.ip});
 
   @override
   String toString() {
@@ -44,7 +44,7 @@ class PostgreMacaddr {
   /// Example: '08:00:2b:01:02:03'
   String mac;
 
-  PostgreMacaddr({this.mac});
+  PostgreMacaddr({required this.mac});
 
   @override
   String toString() {
@@ -59,7 +59,7 @@ class PostgreMacaddr8 {
   /// Example: '08-00-2b-01-02-03-04-05'
   String mac;
 
-  PostgreMacaddr8({this.mac});
+  PostgreMacaddr8({required this.mac});
 
   @override
   String toString() {

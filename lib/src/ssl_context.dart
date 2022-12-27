@@ -6,10 +6,10 @@ class SslContext {
   //SslVerifyMode verifyMode = SslVerifyMode.CERT_NONE;
   //bool checkHostname = false;
 
-  SecurityContext context;
-  final bool Function(X509Certificate) onBadCertificate;
-  void Function(String) keyLog;
-  List<String> supportedProtocols;
+  SecurityContext? context;
+  final bool Function(X509Certificate)? onBadCertificate;
+  void Function(String)? keyLog;
+  List<String>? supportedProtocols;
 
   SslContext(
       {this.onBadCertificate,

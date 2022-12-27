@@ -29,10 +29,10 @@ void initUCharCache() {
 
 typedef NextFunc = UChar Function(int, bool);
 
-UChar _fromCache(NextFunc next, int cp, bool needFeature) {
-  UChar ret = _cache[cp];
+UChar _fromCache(NextFunc? next, int cp, bool needFeature) {
+  UChar? ret = _cache[cp];
   if (ret == null) {
-    ret = next(cp, needFeature);
+    ret = next!(cp, needFeature);
     if (ret.feature != null &&
         ++_cacheCounter[(cp >> 8) & 0xFF] > _CACHE_THRESHOLD) {
       _cache[cp] = ret;
@@ -41,22 +41,22 @@ UChar _fromCache(NextFunc next, int cp, bool needFeature) {
   return ret;
 }
 
-UChar _fromData(NextFunc next, int cp, bool needFeature) {
+UChar _fromData(NextFunc? next, int cp, bool needFeature) {
   final hash = cp & 0xFF00;
   final dunit = unormdata[hash] ?? {};
   final f = dunit[cp];
   return f != null ? UChar(cp, f) : UChar(cp, _DEFAULT_FEATURE);
 }
 
-UChar _fromCpOnly(NextFunc next, int cp, bool needFeature) {
-  return needFeature ? next(cp, needFeature) : UChar(cp, null);
+UChar _fromCpOnly(NextFunc? next, int cp, bool needFeature) {
+  return needFeature ? next!(cp, needFeature) : UChar(cp, null);
 }
 
-UChar _fromRuleBasedJamo(NextFunc next, int cp, bool needFeature) {
+UChar _fromRuleBasedJamo(NextFunc? next, int cp, bool needFeature) {
   if (cp < _LBase ||
       (_LBase + _LCount <= cp && cp < _SBase) ||
       (_SBase + _SCount < cp)) {
-    return next(cp, needFeature);
+    return next!(cp, needFeature);
   }
   if (_LBase <= cp && cp < _LBase + _LCount) {
     final c = Map<int, Object>();
@@ -88,10 +88,10 @@ UChar _fromRuleBasedJamo(NextFunc next, int cp, bool needFeature) {
   return UChar(cp, feature);
 }
 
-UChar _fromCpFilter(NextFunc next, int cp, bool needFeature) {
+UChar _fromCpFilter(NextFunc? next, int cp, bool needFeature) {
   return cp < 60 || 13311 < cp && cp < 42607
       ? UChar(cp, _DEFAULT_FEATURE)
-      : next(cp, needFeature);
+      : next!(cp, needFeature);
 }
 
 final Function _fromCharCode = reduceRight(
@@ -104,15 +104,15 @@ final Function _fromCharCode = reduceRight(
 
 class UChar {
   final int codepoint;
-  List<Object> _feature;
+  List<Object?>? _feature;
 
-  List<Object> get feature => _feature;
+  List<Object?>? get feature => _feature;
 
   UChar(this.codepoint, this._feature);
 
   void prepareFeature() {
     if (this.feature == null) {
-      this._feature = UChar.fromCharCode(this.codepoint, true).feature;
+      this._feature = UChar.fromCharCode(this.codepoint, true)!.feature;
     }
   }
 
@@ -127,40 +127,40 @@ class UChar {
     }
   }
 
-  List<int> getDecomp() {
+  List<int>? getDecomp() {
     prepareFeature();
-    return _feature[0] as List<int> ?? null;
+    return _feature![0] as List<int>? ?? null;
   }
 
   bool isCompatibility() {
     prepareFeature();
-    final int feature1 = _feature[1] as int;
+    final int? feature1 = _feature![1] as int?;
     return feature1 != null && feature1 > 0 && (feature1 & (1 << 8)) > 0;
   }
 
   bool isExclude() {
     prepareFeature();
-    final int feature1 = _feature[1] as int;
+    final int? feature1 = _feature![1] as int?;
     return feature1 != null && feature1 > 0 && (feature1 & (1 << 9)) > 0;
   }
 
   int getCanonicalClass() {
     prepareFeature();
-    final int feature1 = _feature[1] as int;
+    final int? feature1 = _feature![1] as int?;
     return feature1 != null && feature1 > 0 ? feature1 & 0xFF : 0;
   }
 
-  UChar getComposite(UChar following) {
+  UChar? getComposite(UChar following) {
     prepareFeature();
-    final Map<dynamic, dynamic> feature2 = _feature[2] as Map<dynamic, dynamic>;
+    final Map<dynamic, dynamic>? feature2 = _feature![2] as Map<dynamic, dynamic>?;
     if (feature2 == null) {
       return null;
     }
-    final int cp = feature2[following.codepoint];
+    final int? cp = feature2[following.codepoint];
     return cp != null && cp > 0 ? UChar.fromCharCode(cp, false) : null;
   }
 
-  static UChar fromCharCode(int cp, bool needFeature) =>
+  static UChar? fromCharCode(int cp, bool needFeature) =>
       _fromCharCode(cp, needFeature);
 
   static bool isHighSurrogate(int cp) {

@@ -23,7 +23,7 @@ import 'query.dart';
 import 'server_info.dart';
 import 'server_notice.dart';
 import 'ssl_context.dart';
-import 'substitute.dart';
+
 import 'transaction_context.dart';
 import 'utils/buffer.dart';
 import 'connection_state.dart';
@@ -31,30 +31,30 @@ import 'connection_state.dart';
 import 'transaction_state.dart';
 
 class CoreConnection {
-  List<int> userBytes;
-  String host;
-  String database;
+  late List<int> userBytes;
+  String? host;
+  String? database;
   int port;
-  List<int> passwordBytes;
+ late List<int> passwordBytes;
   String sourceAddress;
   bool isUnixSocket = false;
   //SSLv3/TLS TLSv1.3
-  SslContext sslContext;
+  SslContext? sslContext;
 
   bool tcpKeepalive;
-  String applicationName;
+  String? applicationName;
   dynamic replication;
   // for SCRAM-SHA-256 auth
-  ScramAuthenticator scramAuthenticator;
-  AuthenticationRequestType authenticationRequestType;
+  ScramAuthenticator? scramAuthenticator;
+ late AuthenticationRequestType authenticationRequestType;
 
   /// The owner of the connection, or null if not available.
-  ConnectionOwner owner;
+  ConnectionOwner? owner;
 
-  String connectionName;
+  String? connectionName;
   int connectionId = 0;
 
-  Completer<CoreConnection> _connected; // = Completer<CoreConnection>();
+  late Completer<CoreConnection> _connected; // = Completer<CoreConnection>();
 
   // PreparedStatementState _preparedStatementState = PreparedStatementState.none;
 
@@ -62,14 +62,14 @@ class CoreConnection {
   //dynamic _xid;
   //Set _statement_nums;
 
-  Socket _socket;
+  late Socket _socket;
   //client_encoding
   //String clientEncoding = 'utf8';
 
   String defaultCodeCharset = 'ascii'; //ascii
   String textCharset = 'utf8'; //utf8
 
-  TypeConverter typeConverter;
+ late TypeConverter typeConverter;
 
   // var _commands_with_count = [
   //   "INSERT".codeUnits,
@@ -92,11 +92,11 @@ class CoreConnection {
   ServerInfo serverInfo = ServerInfo();
 
   String user;
-  String password;
+  String? password;
 
   Duration connectionTimeout = Duration(seconds: 180);
 
-  ServerNotice lastServerNotice;
+  ServerNotice? lastServerNotice;
 
   //Future<dynamic> Function() _flush;
   //void Function(List<int> d) _write;
@@ -106,7 +106,7 @@ class CoreConnection {
 
   Map<String, dynamic> _initParams = <String, dynamic>{};
 
-  List<int> _transaction_status;
+  List<int>? _transaction_status;
 
   ConnectionState _connectionState = ConnectionState.notConnected;
 
@@ -119,21 +119,21 @@ class CoreConnection {
 
   TransactionState transactionState = TransactionState.unknown;
 
-  Buffer _buffer;
+ late Buffer _buffer;
   // backend_key_data
   int backendPid = 0;
 
   bool hasConnected = false;
   // queue of queries to be executed
   final Queue<Query> _sendQueryQueue = Queue<Query>();
-  Query _query;
+  Query? _query;
 
   int prepareStatementId = 0;
   //int _transactionLevel = 0;
 
   // transaction queue to be executed
   final _transactionQueue = Queue<TransactionContext>();
-  TransactionContext _currentTransaction;
+  TransactionContext? _currentTransaction;
   int _transactionId = 0;
 
   /// [textCharset] utf8 | latin1 | ascii
@@ -189,11 +189,11 @@ class CoreConnection {
   }
 
   void _init() {
-    if (user == null) {
-      throw PostgresqlException(
-          "The 'user' connection parameter cannot be null",
-          connectionName: connectionName);
-    }
+    // if (user == null) {
+    //   throw PostgresqlException(
+    //       "The 'user' connection parameter cannot be null",
+    //       connectionName: connectionName);
+    // }
 
     if (connectionName == null) {
       connectionName = 'dargres_$connectionId';
@@ -222,7 +222,7 @@ class CoreConnection {
     this.userBytes = _initParams['user'];
 
     if (password is String) {
-      this.passwordBytes = typeConverter.charsetEncode(password, textCharset);
+      this.passwordBytes = typeConverter.charsetEncode(password!, textCharset);
     }
   }
 
@@ -238,7 +238,7 @@ class CoreConnection {
     _socket.setRawOption(option);
   }
 
-  Future<CoreConnection> connect({int delayBeforeConnect}) async {
+  Future<CoreConnection> connect({int? delayBeforeConnect}) async {
     _connectionState = ConnectionState.socketConnecting;
     // print('Connecting...');
     if (delayBeforeConnect != null) {
@@ -269,7 +269,7 @@ class CoreConnection {
     } else if (isUnixSocket == true) {
       //throw UnimplementedError('unix_sock not implemented');
       _socket = await Socket.connect(
-              InternetAddress(host, type: InternetAddressType.unix), port)
+              InternetAddress(host!, type: InternetAddressType.unix), port)
           .timeout(connectionTimeout);
     } else {
       throw PostgresqlException('one of host or unix_sock must be provided',
@@ -310,10 +310,10 @@ class CoreConnection {
           SecurityContext();
           SecureSocket.secure(
             socket,
-            context: sslContext.context,
-            onBadCertificate: sslContext.onBadCertificate,
+            context: sslContext!.context,
+            onBadCertificate: sslContext!.onBadCertificate,
             // keyLog: sslContext.keyLog,
-            supportedProtocols: sslContext.supportedProtocols,
+            supportedProtocols: sslContext!.supportedProtocols,
           ).then(completer.complete).catchError(completer.completeError);
         }
       });
@@ -336,7 +336,7 @@ class CoreConnection {
       query.queryType = QueryType.simple;
       _enqueueQuery(query);
       await query.stream.toList();
-      return query.rowsAffected ?? 0;
+      return query.rowsAffected ;
     } catch (ex, st) {
       return Future.error(ex, st);
     }
@@ -460,7 +460,7 @@ class CoreConnection {
       final result = await operation(transa);
       await commit(transa);
       return result;
-    } catch (e, s) {
+    } catch (e) {
       //print('runInTransaction catch (_)');
       //print('runInTransaction  $e $s');
       await rollBack(transa);
@@ -478,7 +478,7 @@ class CoreConnection {
             'Connection is closed, cannot execute transaction.',
             errorCode: 500,
             serverMessage: lastServerNotice,
-            serverErrorCode: lastServerNotice.code,
+            serverErrorCode: lastServerNotice?.code,
             connectionName: connectionName);
       }
     }
@@ -525,7 +525,7 @@ class CoreConnection {
             errorCode: 500,
             serverMessage: lastServerNotice,
             connectionName: connectionName,
-            serverErrorCode: lastServerNotice.code);
+            serverErrorCode: lastServerNotice?.code);
       }
     }
     //print('_enqueueQuery add Query ');
@@ -555,7 +555,7 @@ class CoreConnection {
     var queryQueue = _sendQueryQueue;
     if (_currentTransaction != null) {
       //print('_processSendQueryQueue in transaction');
-      queryQueue = _currentTransaction.sendQueryQueue;
+      queryQueue = _currentTransaction!.sendQueryQueue;
     }
 
     if (queryQueue.isEmpty) {
@@ -574,7 +574,7 @@ class CoreConnection {
     //print('_processSendQueryQueue _connectionState: $_connectionState}');
     //assert(_connectionState == ConnectionState.idle);
     _query = queryQueue.removeFirst();
-    final query = _query;
+    final query = _query!;
     query.state = QueryState.busy;
 
     if (query.queryType == QueryType.simple) {
@@ -741,7 +741,7 @@ class CoreConnection {
   void _handle_BIND_COMPLETE(List<int> data) {
     // print('handle_BIND_COMPLETE ${charsetDecode(data, allowMalformed: true)}');
     //informa que terminaou a execução dos passos de uma prepared query
-    _query.isPreparedComplete = true;
+    _query?.isPreparedComplete = true;
   }
 
   void _handle_PARAMETER_DESCRIPTION(List<int> data) {
@@ -788,7 +788,7 @@ class CoreConnection {
       //fix async call
       if (query?.queryType == QueryType.prepareStatement &&
           query?.error == null) {
-        query.state = QueryState.done;
+        query?.state = QueryState.done;
         query?.close();
         _query = null;
       }
@@ -797,7 +797,7 @@ class CoreConnection {
         _query = null;
       }
       if (query?.state == QueryState.error) {
-        query?.addStreamError(_query.error, query.stackTrace);
+        query?.addStreamError(_query!.error!, query.stackTrace);
         _query = null;
         //print('handle_READY_FOR_QUERY throw');
       }
@@ -851,7 +851,7 @@ class CoreConnection {
       //input_funcs.add(PG_TYPES[field["type_oid"]]);
     }
 
-    final query = _query;
+    final query = _query!;
     query.columnCount = count;
     query.columns = UnmodifiableListView(list);
     //query.commandIndex++;
@@ -866,13 +866,13 @@ class CoreConnection {
   void _handle_DATA_ROW(List<int> data) {
     // print('handle_DATA_ROW');
 
-    final query = _query;
+    final query = _query!;
 
     var idx = 2;
     var row = [];
     var v;
     for (var i = 0; i < query.columnCount; i++) {
-      var col = query.columns[i];
+      var col = query.columns![i];
       var vlen = i_unpack(data, idx)[0];
       idx += 4;
       if (vlen == -1) {
@@ -897,7 +897,7 @@ class CoreConnection {
     final query = _query;
     // transactionState == TransactionState.error
     if (_transaction_status?.first == IN_FAILED_TRANSACTION &&
-        query.error != null) {
+        query?.error != null) {
       //
       //sql = context.statement.split()[0].rstrip(";").upper()
       //if (query.sql != "ROLLBACK") {
@@ -920,7 +920,7 @@ class CoreConnection {
   }
 
   /// [statement_name_bin] name statement bytes
-  void _send_PARSE(List<int> statement_name_bin, String statement, List oids) {
+  void _send_PARSE(List<int> statement_name_bin, String statement, List? oids) {
     //bytearray
     var val = <int>[...statement_name_bin];
     val.addAll(
@@ -1087,7 +1087,7 @@ class CoreConnection {
             username: this.user, password: this.password),
       );
 
-      var init = this.scramAuthenticator.handleMessage(
+      var init = this.scramAuthenticator!.handleMessage(
             // Get type type from the server message
             SaslMessageType.AuthenticationSASL,
             // Append the remaining bytes from serve if need
@@ -1097,10 +1097,10 @@ class CoreConnection {
 
       var mech = [
         ...typeConverter.charsetEncode(
-            this.scramAuthenticator.mechanism.name, defaultCodeCharset),
+            this.scramAuthenticator!.mechanism.name, defaultCodeCharset),
         NULL_BYTE
       ];
-      var saslInitialResponse = [...mech, ...i_pack(Utils.len(init)), ...init];
+      var saslInitialResponse = [...mech, ...i_pack(Utils.len(init)), ...init!];
       //  SASLInitialResponse
       this._send_message(PASSWORD, saslInitialResponse);
       this._sock_flush();
@@ -1108,18 +1108,18 @@ class CoreConnection {
         AuthenticationRequestType.SASLContinue) {
       // AuthenticationSASLContinue
 
-      var msg = this.scramAuthenticator.handleMessage(
+      var msg = this.scramAuthenticator!.handleMessage(
             SaslMessageType.AuthenticationSASLContinue,
             // Append the bytes receiver from server
             Uint8List.fromList(data.sublist(4)),
           );
-      this._send_message(PASSWORD, msg);
+      this._send_message(PASSWORD, msg!);
       this._sock_flush();
     } else if (authenticationRequestType ==
         AuthenticationRequestType.SASLFinal) {
       // AuthenticationSASLFinal
 
-      this.scramAuthenticator.handleMessage(
+      this.scramAuthenticator!.handleMessage(
             SaslMessageType.AuthenticationSASLFinal,
             // Append the bytes receiver from server
             Uint8List.fromList(data.sublist(4)),
@@ -1325,10 +1325,10 @@ class CoreConnection {
       }
     }
 
-    if (_socket == null) {
-      throw PostgresqlException("connection is closed",
-          connectionName: connectionName);
-    }
+    // if (_socket == null) {
+    //   throw PostgresqlException("connection is closed",
+    //       connectionName: connectionName);
+    // }
 
     //send _MSG_TERMINATE
     try {

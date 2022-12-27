@@ -29,9 +29,9 @@ class PostgrePoint {
 /// LINE - Specified by its general equation (Ax+By+C=0).
 class PostgreLine {
   final String name = 'line';
-  double a;
-  double b;
-  double c;
+ late double a;
+  late  double b;
+  late  double c;
 
   PostgreLine(this.a, this.b, this.c);
 
@@ -100,10 +100,7 @@ class PostgreLine {
   }
 
   @override
-  String toString() {
-    if (a == null || b == null || c == null) {
-      return null;
-    }
+  String toString() {    
     return '{$a,$b,$c}';
   }
 }
@@ -116,7 +113,7 @@ class PostgreLineSegment {
   PostgrePoint end;
   final String name = 'lseg';
 
-  PostgreLineSegment({this.start, this.end});
+  PostgreLineSegment({required this.start, required this.end});
 
   @override
   String toString() {
@@ -136,7 +133,7 @@ class PostgreBox {
   PostgrePoint low;
   final String name = 'box';
 
-  PostgreBox({this.high, this.low});
+  PostgreBox({required this.high, required this.low});
 
   @override
   String toString() {
@@ -155,7 +152,7 @@ class PostgreCircle {
   double radius;
   final String name = 'circle';
 
-  PostgreCircle({this.center, this.radius});
+  PostgreCircle({required this.center, required this.radius});
 
   @override
   String toString() {
@@ -172,7 +169,7 @@ class PostgrePath {
   List<PostgrePoint> segments = [];
   final String name = 'path';
 
-  PostgrePath({this.segments});
+  PostgrePath({required this.segments});
 
   @override
   String toString() {
@@ -190,7 +187,7 @@ class PostgrePolygon {
   List<PostgrePoint> segments = [];
   final String name = 'polygon';
 
-  PostgrePolygon({this.segments});
+  PostgrePolygon({required this.segments});
 
   @override
   String toString() {

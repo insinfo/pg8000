@@ -30,68 +30,66 @@ String pgCodeString(int pgCode) {
   switch (pgCode) {
     case NOTICE_RESPONSE:
       return 'NOTICE_RESPONSE';
-      break;
+
     case AUTHENTICATION_REQUEST:
       return 'AUTHENTICATION_REQUEST';
-      break;
 
     case PARAMETER_STATUS:
       return 'PARAMETER_STATUS';
-      break;
+
     case BACKEND_KEY_DATA:
       return 'BACKEND_KEY_DATA';
-      break;
+
     case READY_FOR_QUERY:
       return 'READY_FOR_QUERY';
-      break;
+
     case ROW_DESCRIPTION:
       return 'ROW_DESCRIPTION';
-      break;
+
     case ERROR_RESPONSE:
       return 'ERROR_RESPONSE';
-      break;
+
     case DATA_ROW:
       return 'DATA_ROW';
-      break;
+
     case COMMAND_COMPLETE:
       return 'COMMAND_COMPLETE';
-      break;
+
     case PARSE_COMPLETE:
       return 'PARSE_COMPLETE';
-      break;
+
     case BIND_COMPLETE:
       return 'BIND_COMPLETE';
-      break;
+
     case CLOSE_COMPLETE:
       return 'CLOSE_COMPLETE';
-      break;
+
     case PORTAL_SUSPENDED:
       return 'PORTAL_SUSPENDED';
-      break;
+
     case NO_DATA:
       return 'NO_DATA';
-      break;
+
     case PARAMETER_DESCRIPTION:
       return 'PARAMETER_DESCRIPTION';
-      break;
+
     case NOTIFICATION_RESPONSE:
       return 'NOTIFICATION_RESPONSE';
-      break;
+
     case COPY_DONE:
       return 'COPY_DONE';
-      break;
+
     case COPY_DATA:
       return 'COPY_DATA';
-      break;
+
     case COPY_IN_RESPONSE:
       return 'COPY_IN_RESPONSE';
-      break;
+
     case COPY_OUT_RESPONSE:
       return 'COPY_OUT_RESPONSE';
-      break;
+
     case EMPTY_QUERY_RESPONSE:
       return 'EMPTY_QUERY_RESPONSE';
-      break;
   }
   return 'unknow';
 }

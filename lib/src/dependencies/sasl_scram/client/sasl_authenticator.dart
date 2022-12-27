@@ -38,12 +38,12 @@ abstract class SaslAuthenticator extends Authenticator {
   static const int DefaultNonceLength = 24;
 
   SaslMechanism mechanism;
-  SaslStep currentStep;
+  late SaslStep currentStep;
 
   SaslAuthenticator(this.mechanism) : super();
 
   @override
-  Uint8List handleMessage(
+  Uint8List? handleMessage(
       SaslMessageType msgType, Uint8List bytesReceivedFromServer,
       {bool specifyUsername = false}) {
     switch (msgType) {

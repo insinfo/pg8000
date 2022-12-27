@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+
 import 'package:dargres/src/dependencies/buffer_terrier/raw_reader.dart';
 
 import 'package:test/test.dart';
@@ -12,20 +13,20 @@ import 'package:dargres/src/dependencies/buffer_terrier/raw_value.dart';
 
 /// Returns a matcher that matches integers with the bytes.
 /// Uses [DebugHexEncoder] for describing problems.
-Matcher byteListEquals(Iterable<int> expected, {DebugHexEncoder format}) {
+Matcher byteListEquals(Iterable<int> expected, {DebugHexEncoder? format}) {
   return _ByteListEquals(expected.toList(), format: format);
 }
 
 /// Returns a matcher that matches [RawEncodable] with another .
 /// Uses [DebugHexEncoder] for describing problems.
-Matcher selfEncoderEquals(RawEncodable expected, {DebugHexEncoder format}) {
+Matcher selfEncoderEquals(RawEncodable expected, {DebugHexEncoder? format}) {
   return _SelfEncoderEquals(expected, format: format);
 }
 
 /// Returns a matcher that matches [RawEncodable] with the bytes.
 /// Uses [DebugHexEncoder] for describing problems.
 Matcher selfEncoderEqualsBytes(Iterable<int> expected,
-    {DebugHexEncoder format}) {
+    {DebugHexEncoder? format}) {
   return _SelfEncoderEquals(RawData(expected.toList()), format: format);
 }
 
@@ -33,7 +34,7 @@ class _ByteListEquals extends Matcher {
   final List _expected;
   final DebugHexEncoder format;
 
-  _ByteListEquals(this._expected, {DebugHexEncoder format})
+  _ByteListEquals(this._expected, {DebugHexEncoder? format})
       : this.format = format ?? const DebugHexEncoder();
 
   @override
@@ -48,7 +49,7 @@ class _ByteListEquals extends Matcher {
     if (item is List) {
       return mismatchDescription
           .replace("Actually hex:")
-          .add(format.convert(item, expected: _expected));
+          .add(format.convert(item, expected: _expected as List<int>));
     } else {
       return orderedEquals(_expected)
           .describeMismatch(item, mismatchDescription, matchState, verbose);
@@ -76,7 +77,7 @@ class _SelfEncoderEquals extends Matcher {
   final _ByteListEquals _equals;
   final Matcher _fallbackEquals;
 
-  _SelfEncoderEquals(RawEncodable expected, {DebugHexEncoder format})
+  _SelfEncoderEquals(RawEncodable expected, {DebugHexEncoder? format})
       : this._equals =
             _ByteListEquals(expected.toUint8ListViewOrCopy(), format: format),
         this._fallbackEquals = equals(expected);
@@ -121,15 +122,15 @@ class _SelfEncoderEquals extends Matcher {
 void main() {
   group("RawReader:", () {
     group("numbers:", () {
-      int expected;
-      int length;
-      RawReader reader;
+     late int expected;
+     late int length;
+     late RawReader reader;
 
-      tearDown(() {
-        expected = null;
-        length = null;
-        reader = null;
-      });
+      // tearDown(() {
+      //   expected = null;
+      //   length = null;
+      //   reader = null;
+      // });
 
       /// Converts reader to little-endian.
       void littleEndian(int length) {
@@ -348,10 +349,10 @@ void main() {
   //     final expected =
   //         Int64.fromBytesBigEndian(const <int>[1, 2, 3, 4, 5, 6, 7, 8]);
 
-  //     final reader = RawReader.withBytes(input);
-  //     reader.index = 1;
-  //     expect(reader.readFixInt64(), expected);
-  //     expect(reader.availableLength, 0);
+  //     final reader = Rawreader!.withBytes(input);
+  //     reader!.index = 1;
+  //     expect(reader!.readFixInt64(), expected);
+  //     expect(reader!.availableLength, 0);
   //   });
 
   //   test("big-endian", () {
@@ -359,10 +360,10 @@ void main() {
   //     final expected =
   //         Int64.fromBytesBigEndian(const <int>[1, 2, 3, 4, 5, 6, 7, 8]);
 
-  //     final reader = RawReader.withBytes(input);
-  //     reader.index = 1;
-  //     expect(reader.readFixInt64(Endian.big), expected);
-  //     expect(reader.availableLength, 0);
+  //     final reader = Rawreader!.withBytes(input);
+  //     reader!.index = 1;
+  //     expect(reader!.readFixInt64(Endian.big), expected);
+  //     expect(reader!.availableLength, 0);
   //   });
 
   //   test("little-endian", () {
@@ -370,10 +371,10 @@ void main() {
   //     final expected =
   //         Int64.fromBytesBigEndian(const <int>[1, 2, 3, 4, 5, 6, 7, 8]);
 
-  //     final reader = RawReader.withBytes(input);
-  //     reader.index = 1;
-  //     expect(reader.readFixInt64(Endian.little), expected);
-  //     expect(reader.availableLength, 0);
+  //     final reader = Rawreader!.withBytes(input);
+  //     reader!.index = 1;
+  //     expect(reader!.readFixInt64(Endian.little), expected);
+  //     expect(reader!.availableLength, 0);
   //   });
   // });
 

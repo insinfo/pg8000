@@ -16,7 +16,7 @@ import 'dart:typed_data';
 /// The byte order used is [Endian.host] throughout.
 class ReadBuffer {
   /// Creates a [ReadBuffer] for reading from the specified [data].
-  ReadBuffer(this.data) : assert(data != null);
+  ReadBuffer(this.data) ;
 
   /// The underlying data being read.
   final ByteData data;
@@ -33,35 +33,35 @@ class ReadBuffer {
   }
 
   /// Reads a Uint16 from the buffer.
-  int getUint16({Endian endian}) {
+  int getUint16({Endian? endian}) {
     final int value = data.getUint16(_position, endian ?? Endian.host);
     _position += 2;
     return value;
   }
 
   /// Reads a Uint32 from the buffer.
-  int getUint32({Endian endian}) {
+  int getUint32({Endian? endian}) {
     final int value = data.getUint32(_position, endian ?? Endian.host);
     _position += 4;
     return value;
   }
 
   /// Reads an Int32 from the buffer.
-  int getInt32({Endian endian}) {
+  int getInt32({Endian? endian}) {
     final int value = data.getInt32(_position, endian ?? Endian.host);
     _position += 4;
     return value;
   }
 
   /// Reads an Int64 from the buffer.
-  int getInt64({Endian endian}) {
+  int getInt64({Endian ? endian}) {
     final int value = data.getInt64(_position, endian ?? Endian.host);
     _position += 8;
     return value;
   }
 
   /// Reads a Float64 from the buffer.
-  double getFloat64({Endian endian}) {
+  double getFloat64({Endian? endian}) {
     _alignTo(8);
     final double value = data.getFloat64(_position, endian ?? Endian.host);
     _position += 8;
@@ -165,7 +165,7 @@ class WriteBuffer {
     _currentSize += other.length;
   }
 
-  void _addAll(Uint8List data, [int start = 0, int end]) {
+  void _addAll(Uint8List data, [int start = 0, int? end]) {
     final int newEnd = end ?? _eightBytesAsList.length;
     final int newSize = _currentSize + (newEnd - start);
     if (newSize >= _buffer.length) {
@@ -175,7 +175,7 @@ class WriteBuffer {
     _currentSize = newSize;
   }
 
-  void _resize([int requiredLength]) {
+  void _resize([int? requiredLength]) {
     final int doubleLength = _buffer.length * 2;
     final int newLength = math.max(requiredLength ?? 0, doubleLength);
     final Uint8List newBuffer = Uint8List(newLength);
@@ -190,35 +190,35 @@ class WriteBuffer {
   }
 
   /// Write a Uint16 into the buffer.
-  void putUint16(int value, {Endian endian}) {
+  void putUint16(int value, {Endian? endian}) {
     assert(!_isDone);
     _eightBytes.setUint16(0, value, endian ?? Endian.host);
     _addAll(_eightBytesAsList, 0, 2);
   }
 
   /// Write a Uint32 into the buffer.
-  void putUint32(int value, {Endian endian}) {
+  void putUint32(int value, {Endian? endian}) {
     assert(!_isDone);
     _eightBytes.setUint32(0, value, endian ?? Endian.host);
     _addAll(_eightBytesAsList, 0, 4);
   }
 
   /// Write an Int32 into the buffer.
-  void putInt32(int value, {Endian endian}) {
+  void putInt32(int value, {Endian? endian}) {
     assert(!_isDone);
     _eightBytes.setInt32(0, value, endian ?? Endian.host);
     _addAll(_eightBytesAsList, 0, 4);
   }
 
   /// Write an Int64 into the buffer.
-  void putInt64(int value, {Endian endian}) {
+  void putInt64(int value, {Endian? endian}) {
     assert(!_isDone);
     _eightBytes.setInt64(0, value, endian ?? Endian.host);
     _addAll(_eightBytesAsList, 0, 8);
   }
 
   /// Write an Float64 into the buffer.
-  void putFloat64(double value, {Endian endian}) {
+  void putFloat64(double value, {Endian? endian}) {
     assert(!_isDone);
     _alignTo(8);
     _eightBytes.setFloat64(0, value, endian ?? Endian.host);

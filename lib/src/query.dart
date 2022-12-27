@@ -60,7 +60,7 @@ class Query {
   int rowsAffected = 0;
 
   /// params for prepared querys
-  List _params;
+  List? _params;
 
   /// oids for prepared querys
   List _oids = [];
@@ -73,7 +73,7 @@ class Query {
   /// informa que terminaou a execução dos passos de uma prepared query
   bool isPreparedComplete = false;
 
-  List get preparedParams => _params;
+  List get preparedParams => _params != null ? _params! : [];
   List get oids => _oids;
 
   /// funções de conversão de tipo para as colunas
@@ -83,25 +83,25 @@ class Query {
   int columnCount = 0;
 
   /// informações das colunas
-  List<ColumnDescription> columns;
+  List<ColumnDescription>? columns;
   //
-  PostgresqlException _error = null;
-  set error(PostgresqlException e) {
+  PostgresqlException? _error = null;
+  set error(PostgresqlException? e) {
     _error = e;
   }
 
-  PostgresqlException get error => _error;
+  PostgresqlException? get error => _error;
 
-  StackTrace stackTrace = null;
+  StackTrace? stackTrace = null;
 
-  TransactionContext _transactionContext;
+  TransactionContext? _transactionContext;
 
   set transactionContext(TransactionContext ctx) {
     _transactionContext = ctx;
   }
 
   Future<List<Row>> executeStatement() {
-    return _transactionContext.executeStatement(this);
+    return _transactionContext!.executeStatement(this);
   }
 
   StreamController<Row> _controller = StreamController<Row>();
@@ -118,9 +118,9 @@ class Query {
 
   Query(
     this.sql, {
-    List preparedParams,
+    List? preparedParams,
     this.prepareStatementId = 0,
-    List oidsP,
+    List? oidsP,
     this.columns,
     //this.input_funcs = const [],
   }) {
@@ -153,7 +153,7 @@ class Query {
     return newQuery;
   }
 
-  void addPreparedParams(List params, [List oidsP]) {
+  void addPreparedParams(List params, [List? oidsP]) {
     _params = params;
     if (oidsP != null) {
       _oids = oidsP;
@@ -161,14 +161,14 @@ class Query {
     isPreparedComplete = false;
   }
 
-  void addOids(List oidsP) {
+  void addOids(List? oidsP) {
     if (oidsP != null) {
       _oids = oidsP;
     }
   }
 
   void addRow(List<dynamic> rowData) {
-    var row = Row(rowData, columns);
+    var row = Row(rowData, columns!);
     rowCount++;
     //_rows.add(row);
     _controller.add(row);
@@ -180,7 +180,7 @@ class Query {
     //print('Query@close');
   }
 
-  void addStreamError(Object err, [StackTrace stackTrace]) {
+  void addStreamError(Object err, [StackTrace? stackTrace]) {
     _controller.addError(err, stackTrace);
     // stream will be closed once the ready for query message is received.
   }

@@ -4,7 +4,7 @@ import 'package:dargres/src/converters.dart';
 import 'package:test/test.dart';
 
 void main() {
-  TypeConverter typeConverter;
+ late TypeConverter typeConverter;
 
   setUp(() async {
     typeConverter = TypeConverter('utf8', null);

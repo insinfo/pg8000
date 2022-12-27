@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'debug_hex_codec.dart';
 import 'raw_writer.dart';
 
-/// ByteDataReader or BufferReader
 class RawReader {
   /// Tells whether typed data returning methods ([readByteData], [readUint8List]) are
   /// allowed to return views of the input.
@@ -66,7 +65,7 @@ class RawReader {
   /// [RawReaderException].
   /// If `maxLength` is non-null and zero is not found within the first
   /// `maxLength` bytes, the method returns `maxLength`.
-  int lengthUntilZero({int maxLength}) {
+  int lengthUntilZero({int? maxLength}) {
     final byteData = this._byteData;
     final start = this.index;
     int end;
@@ -136,7 +135,7 @@ class RawReader {
   ///
   /// If reading fails, the method throws [RawReaderException].
   /// If reading succeeds, the method increments [index] by `length`.
-  ByteData readByteDataViewOrCopy(int length) {
+  ByteData readByteDataViewOrCopy(int? length) {
     if (length == null) {
       length = availableLength;
     } else if (length > _byteData.lengthInBytes - index) {
@@ -241,18 +240,7 @@ class RawReader {
     return value;
   }
 
-  /// equivale a um readInt8
-  int readByte() {
-    final byteData = this._byteData;
-    final index = this.index;
-    final newIndex = index + 1;
-    if (newIndex > byteData.lengthInBytes) {
-      throw _newEofException(index, "int8");
-    }
-    final value = _byteData.getInt8(index);
-    this.index = index + 1;
-    return value;
-  }
+
 
   /// Returns a new RawReader that has a view at a span of this RawReader.
   ///
@@ -324,11 +312,16 @@ class RawReader {
     return value;
   }
 
+  //isaque eu adicinei isso
+  int readByte() {
+    return readUint8();
+  }
+
   /// Returns a copy of the next `length` bytes.
   ///
   /// If reading fails, the method throws [RawReaderException].
   /// If reading succeeds, the method increments [index] by `length`.
-  Uint8List readUint8List(int length) {
+  Uint8List readUint8List(int? length) {
     if (length == null) {
       length = availableLength;
     } else if (length > _byteData.lengthInBytes - index) {
@@ -366,7 +359,7 @@ class RawReader {
   ///
   /// If reading fails, the method throws [RawReaderException].
   /// If reading succeeds, the method increments [index] by `length`.
-  Uint8List readUint8ListViewOrCopy(int length) {
+  Uint8List readUint8ListViewOrCopy(int? length) {
     if (length == null) {
       length = availableLength;
     } else if (length > _byteData.lengthInBytes - index) {
@@ -512,7 +505,7 @@ class RawReader {
     );
   }
 
-  RawReaderException _newException(String message, {int index}) {
+  RawReaderException _newException(String message, {int? index}) {
     index ??= this.index;
     var snippetStart = index - 16;
     if (snippetStart < 0) {
@@ -564,9 +557,9 @@ class RawReader {
 /// Thrown by [RawReader].
 class RawReaderException implements Exception {
   final String message;
-  final int index;
-  final Uint8List snippet;
-  final int snippetIndex;
+  final int? index;
+  final Uint8List? snippet;
+  final int? snippetIndex;
 
   RawReaderException(
     this.message, {
@@ -577,7 +570,7 @@ class RawReaderException implements Exception {
 
   @override
   String toString() {
-    final snippet = const DebugHexEncoder().convert(this.snippet);
-    return "Error at ${index}: $message\nBytes ${index}..${index + snippetIndex}..${index + snippet.length}: $snippet";
+    final snippet = const DebugHexEncoder().convert(this.snippet ?? []);
+    return "Error at ${index}: $message\nBytes ${index}..${(index ?? 0) + (snippetIndex ?? 0)}..${(index ?? 0) + snippet.length}: $snippet";
   }
 }

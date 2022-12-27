@@ -1,9 +1,5 @@
-import 'dart:typed_data';
-
-import 'package:convert/convert.dart';
 import 'package:dargres/dargres.dart';
 import 'package:dargres/src/core.dart';
-
 import 'package:test/test.dart';
 
 void main() {
@@ -133,7 +129,7 @@ inet_array_type, xml_array_type, varbit_array_type, oid_type, oid_array_type
 '(2,3),(4,7)', '(2,3)', '(2,3),(4,7)', 'text example', '19:50', '2022-12-21T15:52:00', '2022-12-21T15:52:00', '14:24', 'fat & rat',
 'a fat'::tsvector, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',  (X'A'), 'varchar test', 
 '<?xml version="1.0"?><book><title>Manual</title><chapter>...</chapter></book>',
-'123'::xid, '{"a","b"}', '{1,2,null}', '{true,false,null}', '{"\\336\\255\\276\\357",null}', '{a,b}', '{"2022-12-19"}', '{10.5,1.3}',
+'123'::xid, '{"varchar","type",null}', '{1,2,null}', '{true,false,null}', '{"\\336\\255\\276\\357",null}', '{a,b}', '{"2022-12-19"}', '{10.5,1.3}',
 array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::json[], '{10.50}', '{11.50}', '{"3 days 04:05:06"}', '{"abc"}', '{"19:00"}',
 '{"2022-12-21T15:52:00"}', '{"2022-12-21T15:52:00"}', '{"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}', '2', '{8,8}', '{2,2}', '{"192.168.100.128/25"}',
 '{"192.168.100.128/25"}', array['<?xml version="1.0"?><title>Manual</title>']::xml[], array[(X'A')]::varbit[], 2, '{2,2}'
@@ -410,25 +406,25 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
     test('test SELECT varchar array type', () async {
       var res = await con
           .querySimple(r'''SELECT varchar_array_type FROM postgresql_types;''');
-      expect(res.first.first.runtimeType.toString(), 'List<String>');
-      expect(res.first.first, ['a', 'b']);
+      expect(res.first.first.runtimeType.toString(), 'List<String?>');
+      expect(res.first.first, ['varchar', 'type', null]);
     });
     test('test SELECT int4 array type', () async {
       var res = await con
           .querySimple(r'''SELECT int4_array_type FROM postgresql_types;''');
-      expect(res.first.first.runtimeType.toString(), 'List<int>');
+      expect(res.first.first.runtimeType.toString(), 'List<int?>');
       expect(res.first.first, [1, 2, null]);
     });
     test('test SELECT bool array type', () async {
       var res = await con
           .querySimple(r'''SELECT bool_array_type FROM postgresql_types;''');
-      expect(res.first.first.runtimeType.toString(), 'List<bool>');
+      expect(res.first.first.runtimeType.toString(), 'List<bool?>');
       expect(res.first.first, [true, false, null]);
     });
     test('test SELECT bytea array type', () async {
       var res = await con
           .querySimple(r'''SELECT bytea_array_type FROM postgresql_types;''');
-      expect(res.first.first.runtimeType.toString(), 'List<Uint8List>');
+      expect(res.first.first.runtimeType.toString(), 'List<Uint8List?>');
       expect(res.first.first, [
         [222, 173, 190, 239],
         null
@@ -437,7 +433,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
     test('test SELECT char array type', () async {
       var res = await con
           .querySimple(r'''SELECT char_array_type FROM postgresql_types;''');
-      expect(res.first.first.runtimeType.toString(), 'List<String>');
+      expect(res.first.first.runtimeType.toString(), 'List<String?>');
       expect(res.first.first, ['a', 'b']);
     });
     test('test Bit String Types', () async {

@@ -103,8 +103,8 @@ class TypeConverter {
 // 2**63; -1 para ser compativel com dart => pow(2, 63) - 1
   static const MAX_INT8 = 9223372036854775807;
 
-  String connectionName;
-  ServerInfo serverInfo;
+  String? connectionName;
+  ServerInfo? serverInfo;
   String textCharset;
 
   TypeConverter(this.textCharset, this.serverInfo, {this.connectionName});
@@ -241,7 +241,7 @@ class TypeConverter {
     return jsonEncode(v);
   }
 
-  List<T> _parse_array<T>(String data, Function adapter) {
+  List<T?>? _parse_array<T>(String data, Function adapter) {
     var state = ArrayState.Out;
     var stack = [[]];
     var val = [];
@@ -290,22 +290,22 @@ class TypeConverter {
     }
     var result = stack[0][0];
     if (result is List) {
-      return result.map((e) => e as T).toList();
+      return result.map((e) => e as T?).toList();
     }
     return null;
   }
 
   dynamic bool_array_in(dynamic data) {
-    return _parse_array<bool>(data, bool_in);
+    return _parse_array<bool?>(data, bool_in);
   }
 
   dynamic bytes_array_in(dynamic data) {
-    return _parse_array<Uint8List>(data, bytes_in);
+    return _parse_array<Uint8List?>(data, bytes_in);
   }
 
   /// Returns List<int>
   dynamic int_array_in(dynamic data) {
-    return _parse_array<int>(data, int_in);
+    return _parse_array<int?>(data, int_in);
   }
 
   dynamic vector_in(String data) {
@@ -315,41 +315,41 @@ class TypeConverter {
   }
 
   /// Returns List<String>
-  List<String> string_array_in(dynamic data) {
-    return _parse_array<String>(data, string_in);
+  List<String?>? string_array_in(dynamic data) {
+    return _parse_array<String?>(data, string_in);
   }
 
   /// Returns List<String>
-  List<String> interval_array_in(dynamic data) {
-    return _parse_array<String>(data, string_in);
+  List<String?>? interval_array_in(dynamic data) {
+    return _parse_array<String?>(data, string_in);
   }
 
-  List<DateTime> date_array_in(dynamic data) {
-    return _parse_array<DateTime>(data, date_in);
+  List<DateTime?>? date_array_in(dynamic data) {
+    return _parse_array<DateTime?>(data, date_in);
   }
 
-  List<double> float_array_in(dynamic data) {
-    return _parse_array<double>(data, float_in);
+  List<double?>? float_array_in(dynamic data) {
+    return _parse_array<double?>(data, float_in);
   }
 
-  List<double> numeric_array_in(dynamic data) {
-    return _parse_array<double>(data, float_in);
+  List<double?>? numeric_array_in(dynamic data) {
+    return _parse_array<double?>(data, float_in);
   }
 
-  List<Map> json_array_in(dynamic data) {
-    return _parse_array<Map>(data, json_in);
+  List<Map?>? json_array_in(dynamic data) {
+    return _parse_array<Map?>(data, json_in);
   }
 
-  List<String> time_array_in(dynamic data) {
-    return _parse_array<String>(data, string_in);
+  List<String?>? time_array_in(dynamic data) {
+    return _parse_array<String?>(data, string_in);
   }
 
-  List<DateTime> timestamp_array_in(dynamic data) {
-    return _parse_array<DateTime>(data, timestamp_in);
+  List<DateTime?>? timestamp_array_in(dynamic data) {
+    return _parse_array<DateTime?>(data, timestamp_in);
   }
 
-  List<DateTime> timestamptz_array_in(dynamic data) {
-    return _parse_array<DateTime>(data, timestamptz_in);
+  List<DateTime?>? timestamptz_array_in(dynamic data) {
+    return _parse_array<DateTime?>(data, timestamptz_in);
   }
 
   /// [data] String
@@ -467,15 +467,15 @@ class TypeConverter {
   static const escapePattern = r"'\r\n\\\t\b\f\u0000"; //detect unsupported null
   final _escapeRegExp = RegExp("[$escapePattern]");
 
-  String encodeString(String s) {
+  String encodeString(String? s) {
     if (s == null) return ' null ';
     var escaped = s.replaceAllMapped(_escapeRegExp, _escape);
     return " E'$escaped' ";
   }
 
-  String _escape(Match m) => escapes[m[0]];
+  String _escape(Match m) => escapes[m[0]]!;
 
-  String encodeArray(Iterable value, {String pgType}) {
+  String encodeArray(Iterable value, {String? pgType}) {
     final buf = StringBuffer('array[');
     for (final v in value) {
       if (buf.length > 6) buf.write(',');
@@ -486,7 +486,7 @@ class TypeConverter {
     return buf.toString();
   }
 
-  String encodeDateTime(DateTime datetime, {bool isDateOnly: false}) {
+  String encodeDateTime(DateTime? datetime, {bool isDateOnly: false}) {
     if (datetime == null) return 'null';
 
     var string = datetime.toIso8601String();
@@ -571,8 +571,9 @@ class TypeConverter {
       return value.toString();
     } else if (value is num) {
       return numeric_out(value);
-    } else if (value is Iterable) {      
-      return array_out(value);
+    } else if (value is Iterable) {    
+      //TODO checar isso  
+      return array_out(value as List);
     } else if (value is List<Object>) {      
       return array_out(value);
     }else{
@@ -585,7 +586,7 @@ class TypeConverter {
   /// convert from dart types to posgresql types
   /// based on tomyeh implementation  
   // based on https://github.com/tomyeh/postgresql
-  encodeValueTomyeh(dynamic value, String type) {
+  encodeValueTomyeh(dynamic value, String? type) {
     if (type == null) return encodeValueDefault(value);
     if (value == null) return 'null';
 
@@ -698,12 +699,12 @@ class TypeConverter {
         return date_in(value); // date
       case DATE_ARRAY:
         return date_array_in(value); // date[]
-        return value;
+       
       case FLOAT:
         return float_in(value); // _FLOAT8 _FLOAT4 701
       case FLOAT_ARRAY:
         return float_array_in(value); // float8[]
-        return value;
+       
       case INET:
         // return inet_in(value); // inet
         return value;
@@ -718,12 +719,12 @@ class TypeConverter {
         return json_in(value); // json
       case JSON_ARRAY:
         return json_array_in(value); // json[]
-        return value;
+        
       case JSONB:
         return json_in(value); // jsonb
       case JSONB_ARRAY:
         return json_array_in(value); // jsonb[]
-        return value;
+       
       case MACADDR:
         return string_in(value); // MACADDR type
       case MONEY:

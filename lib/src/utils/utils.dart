@@ -1,6 +1,6 @@
 //Windows OU openbsd
 //https://github.com/tpn/winsdk-10/blob/master/Include/10.0.10240.0/um/WinSock2.h
-import 'dart:async';
+
 import 'dart:convert';
 //import 'dart:cli';
 import 'dart:io';
@@ -77,50 +77,50 @@ class Utils {
 
   ///para teste apenas
   ///https://api.dart.dev/stable/2.3.1/dart-cli/waitFor.html
-  T waitFor2<T>(Future<T> future, {Duration timeout}) {
-    T result;
-    bool futureCompleted = false;
-    Object error;
-    StackTrace stacktrace;
+  // T waitFor2<T>(Future<T> future, {Duration? timeout}) {
+  //   T result;
+  //   bool futureCompleted = false;
+  //   Object? error;
+  //   StackTrace stacktrace;
 
-    future.then((r) {
-      futureCompleted = true;
-      result = r;
-    }, onError: (e, st) {
-      error = e;
-      stacktrace = st;
-    });
+  //   future.then((r) {
+  //     futureCompleted = true;
+  //     result = r;
+  //   }, onError: (e, st) {
+  //     error = e;
+  //     stacktrace = st;
+  //   });
 
-    Stopwatch s;
-    if (timeout != null) {
-      s = new Stopwatch()..start();
-    }
-    Timer.run(() {}); // Enusre there is at least one message.
-    while (!futureCompleted && (error == null)) {
-      // ignore: unused_local_variable
-      Duration remaining;
-      if (timeout != null) {
-        if (s.elapsed >= timeout) {
-          throw new TimeoutException("waitFor() timed out", timeout);
-        }
-        remaining = timeout - s.elapsed;
-      }
-      //_WaitForUtils.waitForEvent(timeout: remaining);
-    }
-    if (timeout != null) {
-      s.stop();
-    }
-    Timer.run(() {}); // Ensure that previous calls to waitFor are woken up.
+  //  late Stopwatch s;
+  //   if (timeout != null) {
+  //     s = new Stopwatch()..start();
+  //   }
+  //   Timer.run(() {}); // Enusre there is at least one message.
+  //   while (!futureCompleted && (error == null)) {
+  //     // ignore: unused_local_variable
+  //     Duration remaining;
+  //     if (timeout != null) {
+  //       if (s.elapsed >= timeout) {
+  //         throw new TimeoutException("waitFor() timed out", timeout);
+  //       }
+  //       remaining = timeout - s.elapsed;
+  //     }
+  //     //_WaitForUtils.waitForEvent(timeout: remaining);
+  //   }
+  //   if (timeout != null) {
+  //     s.stop();
+  //   }
+  //   Timer.run(() {}); // Ensure that previous calls to waitFor are woken up.
 
-    if (error != null) {
-      throw new AsyncError(error, stacktrace);
-    }
+  //   if (error != null) {
+  //     throw new AsyncError(error, stacktrace);
+  //   }
 
-    return result;
-  }
+  //   return result;
+  // }
 
   ///retorna o tamanho de uma lista
-  static int len(List list) {
+  static int len(List? list) {
     if (list == null) {
       return 0;
     }
@@ -129,7 +129,7 @@ class Utils {
 
   /// https://ptyagicodecamp.github.io/dart-generators.html
   /// gera uma sequencia serial sobre demanda
-  static Iterable<int> sequence([int firstval = -1, step = 1]) sync* {
+  static Iterable<int> sequence([int firstval = -1,int step = 1]) sync* {
     var x = firstval;
     while (true) {
       yield x += step;
@@ -229,7 +229,7 @@ class Utils {
   /// which the continues adding elements until [startSplit] returns true for a new element.
   static Iterable<List<T>> splitAround<T>(List<T> myList,
       bool Function(T) startSplit, bool Function(T) endSplit) sync* {
-    List<T> list = [];
+    List<T>? list = [];
 
     for (var element in myList) {
       if (list != null) {

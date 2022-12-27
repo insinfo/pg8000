@@ -84,7 +84,7 @@ class DSNParser {
       var matche = regexp.firstMatch(dsn);
 
       if (matche != null) {
-        var split = <String>[];
+        var split = <String?>[];
         for (var i = 0; i < matche.groupCount + 1; i++) {
           split.add(matche[i]);
         }
@@ -93,12 +93,12 @@ class DSNParser {
 
         this.dsnParts = {
           'driver': split[1],
-          'user': auth[0],
+          'user': auth![0],
           'password': auth[1],
           'host': split[3],
-          'port': split[4] != null ? int.parse(split[4], radix: 10) : null,
-          'database': stripLeadingSlash(split[5]),
-          'params': split.length < 7 ? {} : fromQueryParams(split[6])
+          'port': split[4] != null ? int.parse(split[4]!, radix: 10) : null,
+          'database': stripLeadingSlash(split[5]!),
+          'params': split.length < 7 ? {} : fromQueryParams(split[6]!)
         };
       }
     }
@@ -128,7 +128,7 @@ class DSNParser {
     return dsnParts;
   }
 
-  Map<String, dynamic> fromQueryParams(String params) {
+  Map<String, dynamic> fromQueryParams(String? params) {
     if (params == null) {
       return {};
     }
@@ -151,7 +151,7 @@ class DSNParser {
     return str.join('&');
   }
 
-  String stripLeadingSlash(String strP) {
+  String stripLeadingSlash(String? strP) {
     var str = strP ?? '';
     if (str.substring(0, 1) == '/') {
       return str.substring(1, str.length);

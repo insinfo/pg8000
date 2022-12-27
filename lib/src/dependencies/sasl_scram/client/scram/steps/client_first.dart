@@ -27,13 +27,13 @@ class ClientFirst extends SaslStep {
 
   @override
   SaslStep transition(List<int> bytesReceivedFromServer,
-      {passwordDigestResolver passwordDigestResolver}) {
+      {passwordDigestResolver? passwordDigestResolver}) {
     final serverFirstMessage = utf8.decode(bytesReceivedFromServer);
 
     final Map<String, dynamic> decodedMessage =
         parsePayload(serverFirstMessage);
 
-    final r = decodedMessage['r'] as String;
+    final r = decodedMessage['r'] as String?;
     if (r == null || !r.startsWith(rPrefix)) {
       throw SaslScramException('Server sent an invalid nonce.');
     }
@@ -50,7 +50,7 @@ class ClientFirst extends SaslStep {
     if (passwordDigestResolver != null) {
       passwordDigest = passwordDigestResolver(credential);
     } else {
-      passwordDigest = Saslprep.saslprep(credential.password);
+      passwordDigest = Saslprep.saslprep(credential.password!);
     }
 
     final salt = base64.decode(s.toString());

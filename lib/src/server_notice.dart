@@ -9,43 +9,43 @@ class ServerNotice {
 
   final bool isError;
 
-  final String connectionName;
+  final String? connectionName;
 
   final Map<String, String> fields;
 
-  final String severity;
+  final String? severity;
 
-  final String code;
+  final String? code;
 
-  final String message;
+  final String? message;
 
-  String get detail => fields['D'];
+  String? get detail => fields['D'];
 
-  String get hint => fields['H'];
+  String? get hint => fields['H'];
 
-  String get position => fields['P'];
+  String? get position => fields['P'];
 
-  String get internalPosition => fields['p'];
+  String? get internalPosition => fields['p'];
 
-  String get internalQuery => fields['q'];
+  String? get internalQuery => fields['q'];
 
-  String get where => fields['W'];
+  String? get where => fields['W'];
 
-  String get schema => fields['s'];
+  String? get schema => fields['s'];
 
-  String get table => fields['t'];
+  String? get table => fields['t'];
 
-  String get column => fields['c'];
+  String? get column => fields['c'];
 
-  String get dataType => fields['d'];
+  String? get dataType => fields['d'];
 
-  String get constraint => fields['n'];
+  String? get constraint => fields['n'];
 
-  String get file => fields['F'];
+  String? get file => fields['F'];
 
-  String get line => fields['L'];
+  String? get line => fields['L'];
 
-  String get routine => fields['R'];
+  String? get routine => fields['R'];
 
   String toString() => connectionName == null
       ? '$severity $code $message'

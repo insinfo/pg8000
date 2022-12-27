@@ -170,7 +170,7 @@ class RawWriter implements Sink<List<int>> {
   }
 
   /// Writes bytes from [ByteData].
-  void writeByteData(ByteData value, [int index = 0, int writtenLength]) {
+  void writeByteData(ByteData value, [int index = 0, int? writtenLength]) {
     if (writtenLength == null) {
       writtenLength = value.lengthInBytes - index;
     }
@@ -180,7 +180,7 @@ class RawWriter implements Sink<List<int>> {
     var bufferLength = this._length;
     if (writtenLength >= _minLengthForUin32CopyMethod) {
       final hostEndian = Endian.host;
-      while (writtenLength >= 4) {
+      while (writtenLength! >= 4) {
         byteData.setUint32(
           bufferLength,
           value.getUint32(index, hostEndian),
@@ -191,7 +191,7 @@ class RawWriter implements Sink<List<int>> {
         writtenLength -= 4;
       }
     }
-    while (writtenLength > 0) {
+    while (writtenLength! > 0) {
       byteData.setUint8(bufferLength, value.getUint8(index));
       bufferLength++;
       index++;
@@ -204,7 +204,7 @@ class RawWriter implements Sink<List<int>> {
   ///
   /// Before writing, the method calls [ensureAvailableLength], which may throw
   /// [RawWriterException].
-  void writeBytes(List<int> value, [int index = 0, int writtenLength]) {
+  void writeBytes(List<int> value, [int index = 0, int? writtenLength]) {
     if (writtenLength == null) {
       writtenLength = value.length - index;
     }
@@ -358,7 +358,7 @@ class RawWriter implements Sink<List<int>> {
   ///
   /// Before writing, the method calls [ensureAvailableLength], which may throw
   /// [RawWriterException].
-  int writeUtf8(String value, {int maxLengthInBytes}) {
+  int writeUtf8(String value, {int? maxLengthInBytes}) {
     // Write until the first multi-byte rune.
     final multiByteRuneIndex = _writeUtf8Simple(value);
     if (multiByteRuneIndex < 0) {
@@ -392,7 +392,7 @@ class RawWriter implements Sink<List<int>> {
   ///
   /// Before writing, the method calls [ensureAvailableLength], which may throw
   /// [RawWriterException].
-  int writeUtf8NullEnding(String value, {int maxLengthInBytes}) {
+  int writeUtf8NullEnding(String value, {int? maxLengthInBytes}) {
     for (var i = 0; i < value.length; i++) {
       if (value.codeUnitAt(i) == 0) {
         throw ArgumentError.value(value, "value", "contains null byte");
@@ -535,7 +535,7 @@ class RawWriter implements Sink<List<int>> {
   }
 
   @override
-  void add(List data) {
+  void add(List<int> data) {
     writeBytes(data);
   }
 

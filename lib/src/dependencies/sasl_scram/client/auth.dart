@@ -4,19 +4,19 @@ import 'dart:typed_data';
 import 'sasl_authenticator.dart';
 
 abstract class Authenticator {
-  static String name;
+  static String? name;
 
   Authenticator();
 
-  Uint8List handleMessage(
+  Uint8List? handleMessage(
       SaslMessageType msgType, Uint8List bytesReceivedFromServer);
 }
 
 class UsernamePasswordCredential {
   UsernamePasswordCredential({this.username, this.password});
 
-  String username;
-  String password;
+  String? username;
+  String? password;
 }
 
 abstract class RandomStringGenerator {

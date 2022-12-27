@@ -2,31 +2,31 @@ class ServerInfo {
   Map<String, dynamic> rawParams = <String, dynamic>{};
 
   /// SQL_ASCII | utf8
-  String clientEncoding;
+  String? clientEncoding;
 
   /// ISO, DMY
-  String dateStyle;
+  String? dateStyle;
 
   /// on
-  String integerDatetimes;
+  String? integerDatetimes;
 
   /// off
-  String isSuperuser;
+  String? isSuperuser;
 
   /// SQL_ASCII
-  String serverEncoding;
+  String? serverEncoding;
 
   /// example: 8.2.23
-  String serverVersion;
+  String? serverVersion;
 
   /// example: username: sw.suporte
-  String sessionAuthorization;
+  String? sessionAuthorization;
 
   /// off
-  String standardConformingStrings;
+  String? standardConformingStrings;
 
   /// localtime
-  String timeZone;
+  String? timeZone;
 
   ServerInfo({
     this.clientEncoding,

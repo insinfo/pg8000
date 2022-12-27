@@ -40,7 +40,7 @@ class Saslprep {
 
   /// This computes the saslprep algorithm. to allow allow unassigned use the
   /// [options] and set [options.allowUnassigned] to true
-  static String saslprep(String input, {SaslprepOptions options}) {
+  static String saslprep(String input, {SaslprepOptions? options}) {
     if (input.isEmpty) {
       return '';
     }
