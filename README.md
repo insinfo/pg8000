@@ -94,7 +94,7 @@ I'm only able to do this implementation thanks to several open source projects, 
 
 ```
 
-## Creating a connection and executing queries with queryUnnamed (prepared query) and querySimple
+## Creating a connection and executing queries with the queryUnnamed method (prepared query) and the querySimple method. and also returning a map as a result
 ```dart
   var sslContext = SslContext.createDefaultContext();
 
@@ -115,7 +115,7 @@ I'm only able to do this implementation thanks to several open source projects, 
 
   await con.execute('''
         CREATE TABLE "myschema"."test_arrays" ( 
-            nome NAME,
+            name NAME,
             varchar_array_type varchar[], 
             int8_array_type int8[],
             int2_array_type int2[],
@@ -125,7 +125,7 @@ I'm only able to do this implementation thanks to several open source projects, 
 
   await con.queryUnnamed(r'''
 INSERT INTO test_arrays
-(nome, varchar_array_type,int8_array_type, int2_array_type, names_array_type)
+(name, varchar_array_type,int8_array_type, int2_array_type, names_array_type)
  VALUES 
 ($1, $2, $3, $4, $5);
 ''', ['Vagner',["João",'''Isaque Sant'Ana'''],[1,2,3],[1,2,3],['name1']]);
@@ -133,8 +133,8 @@ INSERT INTO test_arrays
   var results = await con.querySimple(r'''SELECT * FROM test_arrays;''');
 
   for (var row in results) {
-    var cols = row.map((c) => '$c' + ' ${c.runtimeType}\r\n').join('');
-    print("$cols");
+    print(row.toColumnMap());
+    //Result: {name: Vagner, varchar_array_type: [João, Isaque Sant'Ana], int8_array_type: [1, 2, 3], int2_array_type: [1, 2, 3], names_array_type: [name1]}
   } 
 
   await con.close();
