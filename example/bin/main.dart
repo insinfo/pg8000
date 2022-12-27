@@ -42,8 +42,9 @@ INSERT INTO test_arrays
   var results = await con.querySimple(r'''SELECT * FROM test_arrays;''');
 
   for (var row in results) {
-    var cols = row.map((c) => '$c' + ' ${c.runtimeType}\r\n').join('');
-    print("$cols");
+    // var cols = row.map((c) => '$c' + ' ${c.runtimeType}\r\n').join('');
+    // print("$cols");
+    print(row.toColumnMap());
   }
  
 

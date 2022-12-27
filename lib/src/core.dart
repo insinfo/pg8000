@@ -328,7 +328,7 @@ class CoreConnection {
   }
 
   /// Execute a sql command e return affected row count
-  /// Example: con.execute('select * from crud_teste.pessoas limit 1')
+  /// Example: con.execute('DROP SCHEMA IF EXISTS myschema CASCADE;')
   Future<int> execute(String sql) async {
     try {
       var query = Query(sql);
