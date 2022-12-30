@@ -2,6 +2,7 @@ import 'package:dargres/dargres.dart';
 import 'package:dargres/src/core.dart';
 import 'package:test/test.dart';
 
+//dart test .\test\query_test.dart --plain-name "queryUnnamed at Sign @ placeholder" --chain-stack-traces -j 1
 void main() {
   var con = CoreConnection('postgres',
       database: 'sistemas',
@@ -26,7 +27,7 @@ void main() {
 
     await con.execute('''
         CREATE TABLE "myschema"."test_arrays" ( 
-          nome NAME,
+          name NAME,
           varchar_array_type varchar[], 
           int8_array_type int8[],
           int2_array_type int2[],
@@ -136,8 +137,11 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
 );''');
   });
 
-  group('test query', () {
-    test('test SELECT bit type', () async {
+  // tearDown(() async {
+  //   con.close();
+  // });
+  group('query', () {
+    test('SELECT bit type', () async {
       var res =
           await con.querySimple(r'''SELECT bit_type FROM postgresql_types;''');
 
@@ -146,7 +150,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ['1']
       ]);
     });
-    test('test SELECT bool type', () async {
+    test('SELECT bool type', () async {
       var res =
           await con.querySimple(r'''SELECT bool_type FROM postgresql_types;''');
 
@@ -155,7 +159,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         [true]
       ]);
     });
-    test('test SELECT box type', () async {
+    test('SELECT box type', () async {
       var res =
           await con.querySimple(r'''SELECT box_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
@@ -163,7 +167,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ['(1,1),(0,0)']
       ]);
     });
-    test('test SELECT bytea type', () async {
+    test('SELECT bytea type', () async {
       var res = await con
           .querySimple(r'''SELECT bytea_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType.toString(), 'Uint8List');
@@ -176,7 +180,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ]
       ]);
     });
-    test('test SELECT char type', () async {
+    test('SELECT char type', () async {
       var res =
           await con.querySimple(r'''SELECT char_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
@@ -184,7 +188,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ['A']
       ]);
     });
-    test('test SELECT cidr type', () async {
+    test('SELECT cidr type', () async {
       var res =
           await con.querySimple(r'''SELECT cidr_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
@@ -192,7 +196,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ['192.168.100.128/25']
       ]);
     });
-    test('test SELECT circle type', () async {
+    test('SELECT circle type', () async {
       var res = await con
           .querySimple(r'''SELECT circle_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
@@ -200,7 +204,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ['<(1,1),2>']
       ]);
     });
-    test('test SELECT date type', () async {
+    test('SELECT date type', () async {
       var res =
           await con.querySimple(r'''SELECT date_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, DateTime);
@@ -208,7 +212,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         [DateTime(2022, 12, 19)]
       ]);
     });
-    test('test SELECT decimal/numeric type', () async {
+    test('SELECT decimal/numeric type', () async {
       var res = await con.querySimple(
           r'''SELECT decimal_numeric_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, double);
@@ -216,7 +220,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         [5]
       ]);
     });
-    test('test SELECT float4 type', () async {
+    test('SELECT float4 type', () async {
       var res = await con
           .querySimple(r'''SELECT float4_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, double);
@@ -224,7 +228,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         [2.3]
       ]);
     });
-    test('test SELECT float8 type', () async {
+    test('SELECT float8 type', () async {
       var res = await con
           .querySimple(r'''SELECT float8_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, double);
@@ -232,7 +236,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         [500.5]
       ]);
     });
-    test('test SELECT inet type', () async {
+    test('SELECT inet type', () async {
       var res =
           await con.querySimple(r'''SELECT inet_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
@@ -240,7 +244,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ['192.168.0.0/24']
       ]);
     });
-    test('test SELECT int2 type', () async {
+    test('SELECT int2 type', () async {
       var res =
           await con.querySimple(r'''SELECT int2_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, int);
@@ -248,7 +252,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         [2]
       ]);
     });
-    test('test SELECT int4 type', () async {
+    test('SELECT int4 type', () async {
       var res =
           await con.querySimple(r'''SELECT int4_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, int);
@@ -256,7 +260,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         [4]
       ]);
     });
-    test('test SELECT int8 type', () async {
+    test('SELECT int8 type', () async {
       var res =
           await con.querySimple(r'''SELECT int8_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, int);
@@ -264,7 +268,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         [8]
       ]);
     });
-    test('test SELECT interval type', () async {
+    test('SELECT interval type', () async {
       var res = await con
           .querySimple(r'''SELECT interval_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
@@ -272,7 +276,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ['3 days 04:05:06']
       ]);
     });
-    test('test SELECT json type', () async {
+    test('SELECT json type', () async {
       var res =
           await con.querySimple(r'''SELECT json_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType.toString(),
@@ -283,7 +287,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ]
       ]);
     });
-    test('test SELECT jsonb type', () async {
+    test('SELECT jsonb type', () async {
       var res = await con
           .querySimple(r'''SELECT jsonb_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType.toString(),
@@ -294,7 +298,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ]
       ]);
     });
-    test('test SELECT line type', () async {
+    test('SELECT line type', () async {
       var res =
           await con.querySimple(r'''SELECT line_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
@@ -302,7 +306,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ['{2,-1,-1}']
       ]);
     });
-    test('test SELECT lseg type', () async {
+    test('SELECT lseg type', () async {
       var res =
           await con.querySimple(r'''SELECT lseg_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
@@ -310,7 +314,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ['[(2,3),(4,7)]']
       ]);
     });
-    test('test SELECT macaddr type', () async {
+    test('SELECT macaddr type', () async {
       var res = await con
           .querySimple(r'''SELECT macaddr_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
@@ -318,43 +322,43 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         ['08:00:2b:01:02:03']
       ]);
     });
-    test('test SELECT money type', () async {
+    test('SELECT money type', () async {
       var res = await con
           .querySimple(r'''SELECT money_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
       expect(res.first.first.toString().contains('25'), true);
     });
-    test('test SELECT path type', () async {
+    test('SELECT path type', () async {
       var res =
           await con.querySimple(r'''SELECT path_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
       expect(res.first.first, '((2,3),(4,7))');
     });
-    test('test SELECT point type', () async {
+    test('SELECT point type', () async {
       var res = await con
           .querySimple(r'''SELECT point_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
       expect(res.first.first, '(2,3)');
     });
-    test('test SELECT polygon type', () async {
+    test('SELECT polygon type', () async {
       var res = await con
           .querySimple(r'''SELECT polygon_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
       expect(res.first.first, '((2,3),(4,7))');
     });
-    test('test SELECT text type', () async {
+    test('SELECT text type', () async {
       var res =
           await con.querySimple(r'''SELECT text_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
       expect(res.first.first, 'text example');
     });
-    test('test SELECT time type', () async {
+    test('SELECT time type', () async {
       var res =
           await con.querySimple(r'''SELECT time_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
       expect(res.first.first, '19:50:00');
     });
-    test('test SELECT timestamp type', () async {
+    test('SELECT timestamp type', () async {
       var res = await con
           .querySimple(r'''SELECT timestamp_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, DateTime);
@@ -372,56 +376,56 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
     //   expect(res.first.first.runtimeType, String);
     //   expect(res.first.first, '14:24:00-03');
     // });
-    test('test SELECT uuid type', () async {
+    test('SELECT uuid type', () async {
       var res =
           await con.querySimple(r'''SELECT uuid_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
       expect(res.first.first, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
     });
-    test('test SELECT varbit type', () async {
+    test('SELECT varbit type', () async {
       var res = await con
           .querySimple(r'''SELECT varbit_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
       expect(res.first.first, '1010');
     });
-    test('test SELECT varchar type', () async {
+    test('SELECT varchar type', () async {
       var res = await con
           .querySimple(r'''SELECT varchar_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
       expect(res.first.first, 'varchar test');
     });
-    test('test SELECT xml type', () async {
+    test('SELECT xml type', () async {
       var res =
           await con.querySimple(r'''SELECT xml_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, String);
       expect(res.first.first,
           '<book><title>Manual</title><chapter>...</chapter></book>');
     });
-    test('test SELECT xid type', () async {
+    test('SELECT xid type', () async {
       var res =
           await con.querySimple(r'''SELECT xid_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, int);
       expect(res.first.first, 123);
     });
-    test('test SELECT varchar array type', () async {
+    test('SELECT varchar array type', () async {
       var res = await con
           .querySimple(r'''SELECT varchar_array_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType.toString(), 'List<String?>');
       expect(res.first.first, ['varchar', 'type', null]);
     });
-    test('test SELECT int4 array type', () async {
+    test('SELECT int4 array type', () async {
       var res = await con
           .querySimple(r'''SELECT int4_array_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType.toString(), 'List<int?>');
       expect(res.first.first, [1, 2, null]);
     });
-    test('test SELECT bool array type', () async {
+    test('SELECT bool array type', () async {
       var res = await con
           .querySimple(r'''SELECT bool_array_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType.toString(), 'List<bool?>');
       expect(res.first.first, [true, false, null]);
     });
-    test('test SELECT bytea array type', () async {
+    test('SELECT bytea array type', () async {
       var res = await con
           .querySimple(r'''SELECT bytea_array_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType.toString(), 'List<Uint8List?>');
@@ -430,13 +434,13 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
         null
       ]);
     });
-    test('test SELECT char array type', () async {
+    test('SELECT char array type', () async {
       var res = await con
           .querySimple(r'''SELECT char_array_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType.toString(), 'List<String?>');
       expect(res.first.first, ['a', 'b']);
     });
-    test('test Bit String Types', () async {
+    test('Bit String Types', () async {
       await con.execute(
           ''' CREATE TEMPORARY TABLE test_bit (a BIT(3), b BIT VARYING(5)); ''');
 
@@ -450,7 +454,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
       ]);
     });
 
-    test('test select clear', () async {
+    test('select clear', () async {
       await con.execute("CREATE TEMPORARY TABLE t1 (f1 int primary key, "
           "f2 bigint not null, f3 varchar(50) null) ");
       try {
@@ -462,7 +466,97 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
       expect(res, []);
     });
 
-    test('test runInTransaction INSERT with prepareStatement', () async {
+    test('INSERT with queryUnnamed', () async {
+      await con.queryUnnamed(r'''
+      INSERT INTO test_arrays
+      (name, varchar_array_type,int8_array_type, int2_array_type, names_array_type)
+      VALUES 
+      ($1, $2, $3, $4, $5);
+      ''', [
+        'Vagner',
+        ["João", '''Isaque Sant'Ana'''],
+        [1, 2, 3],
+        [1, 2, 3],
+        ['name']
+      ]);
+
+      var results =
+          await con.querySimple(r'''SELECT * FROM test_arrays limit 1;''');
+      expect(results, [
+        [
+          'Vagner',
+          ['João', 'Isaque Sant\'Ana'],
+          [1, 2, 3],
+          [1, 2, 3],
+          ['name']
+        ]
+      ]);
+    });
+
+    test('queryUnnamed question mark Placeholder', () async {
+      await con.queryUnnamed(
+        'INSERT INTO test_arrays (name, varchar_array_type,int8_array_type, int2_array_type, names_array_type) VALUES (?, ?, ?, ?, ?);',
+        [
+          'Vagner',
+          ["João", '''Isaque Sant'Ana'''],
+          [1, 2, null],
+          [1, null, 3],
+          ['name1']
+        ],
+        placeholderIdentifier: PlaceholderIdentifier.onlyQuestionMark,
+      );
+      var results =
+          await con.querySimple(r'''SELECT * FROM test_arrays limit 1;''');
+      expect(results, [
+        [
+          'Vagner',
+          ['João', 'Isaque Sant\'Ana'],
+          [1, 2, null],
+          [1, null, 3],
+          ['name1']
+        ]
+      ]);
+    });
+
+    test('queryUnnamed colon : placeholder', () async {
+      await con.queryUnnamed(
+        'INSERT INTO test_arrays (name, varchar_array_type) VALUES (:name, :varchars);',
+        {
+          'name': 'Vagner',
+          'varchars': ["João", '''Isaque Sant'Ana''']
+        },
+        placeholderIdentifier: PlaceholderIdentifier.colon,
+      );
+      var results = await con.querySimple(
+          'SELECT name, varchar_array_type FROM test_arrays limit 1;');
+      expect(results, [
+        [
+          'Vagner',
+          ['João', 'Isaque Sant\'Ana']
+        ]
+      ]);
+    });
+
+    test('queryUnnamed at Sign @ placeholder', () async {
+      await con.queryUnnamed(
+        'INSERT INTO test_arrays (name, varchar_array_type) VALUES (@name, @varchars);',
+        {
+          'name': 'Vagner',
+          'varchars': ["João", '''Isaque Sant'Ana''']
+        },
+        placeholderIdentifier: PlaceholderIdentifier.atSign,
+      );
+      var results = await con.querySimple(
+          'SELECT name, varchar_array_type FROM test_arrays limit 1;');
+      expect(results, [
+        [
+          'Vagner',
+          ['João', 'Isaque Sant\'Ana']
+        ]
+      ]);
+    });
+
+    test('runInTransaction INSERT with prepareStatement', () async {
       await con.runInTransaction((ctx) async {
         var statement = await ctx.prepareStatement(
             r'''INSERT INTO "myschema"."pessoas_cursos" ("idPessoa", "idCurso","name") VALUES ($1, $2 ,$3)''',
@@ -477,27 +571,28 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
       ]);
     });
 
-    test('test INSERT with queryUnnamed', () async {
-      await con.queryUnnamed(r'''
-      INSERT INTO test_arrays
-      (nome, varchar_array_type,int8_array_type, int2_array_type, names_array_type)
-      VALUES 
-      ($1, $2, $3, $4, $5);
-      ''', [
-        'Vagner',
-        ["João", '''Isaque Sant'Ana'''],
-        [1, 2, 3],
-        [1, 2, 3],
-        ['name']
-      ]);
-
-      var results = await con.querySimple(r'''SELECT * FROM test_arrays;''');
+    test('runInTransaction queryUnnamed INSERT with @ placeholder', () async {
+      await con.runInTransaction((ctx) async {
+         await ctx.queryUnnamed(
+          'INSERT INTO test_arrays (name, varchar_array_type) VALUES (@name, @varchars);',
+          {
+            'name': 'Vagner',
+            'varchars': ["João", '''Isaque Sant'Ana''']
+          },
+          placeholderIdentifier: PlaceholderIdentifier.atSign,
+        );
+      });
+       var results = await con.querySimple(
+          'SELECT name, varchar_array_type FROM test_arrays limit 1;');
       expect(results, [
-        ['Vagner', ['João', 'Isaque Sant\'Ana'], [1, 2, 3], [1, 2, 3], ['name']]
+        [
+          'Vagner',
+          ['João', 'Isaque Sant\'Ana']
+        ]
       ]);
     });
 
-    // test('test runInTransaction INSERT with failure', () async {
+    // test('runInTransaction INSERT with failure', () async {
     //   expect(con.runInTransaction((ctx) async {
     //     var statement = await ctx.prepareStatement(
     //         r'''INSERT INTO "myschema"."pessoas_cursos" ("idPessoa", "idCurso","name2") VALUES ($1, $2 ,$3)''',

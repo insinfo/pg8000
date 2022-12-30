@@ -7,6 +7,7 @@ import 'exceptions.dart';
 
 import 'query.dart';
 import 'row_info.dart';
+import 'to_statement.dart';
 
 class TransactionContext {
   final int transactionId;
@@ -54,27 +55,64 @@ class TransactionContext {
     }
   }
 
-  /// execute a prepared unnamed statement
-  /// Example: com.queryUnnamed('select * from crud_teste.pessoas limit \$1', [1]);
-  Future<List<Row>> queryUnnamed(String sql, List params) async {
+ /// execute a prepared unnamed statement
+  /// [params] parameters can be a list or a map,
+  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
+  /// it has to be a List, if different it has to be a Map
+  /// return Query prepared with statementName for execute with (executeStatement) method
+  /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
+  Future<List<Row>> queryUnnamed(
+    String sql,
+    dynamic params, {
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+  }) async {
     try {
-      var statement =
-          await prepareStatement(sql, params, isUnamedStatement: true);
+      var statement = await prepareStatement(sql, params,
+          isUnamedStatement: true,
+          placeholderIdentifier: placeholderIdentifier);
       return await executeStatement(statement);
     } catch (ex, st) {
       return Future.error(ex, st);
     }
   }
 
+  /// prepare statement
+  /// [params] parameters can be a list or a map,
+  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
+  /// it has to be a List, if different it has to be a Map
   /// return Query prepared with statementName for execute with (executeStatement) method
-  Future<Query> prepareStatement(statement, List params,
-      {bool isUnamedStatement = false}) async {
+  /// Example:
+  /// var statement = await prepareStatement('SELECT * FROM table LIMIT $1', [0]);
+  /// var result await executeStatement(statement);
+  Future<Query> prepareStatement(
+    String sql,
+    dynamic params, {
+    bool isUnamedStatement = false,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+  }) async {
     try {
-      var query = Query(statement, preparedParams: params);
+      var parameters = params;
+      var statement = sql;
+
+      if (placeholderIdentifier == PlaceholderIdentifier.onlyQuestionMark) {
+        statement = toStatement2(sql);
+      } else if (placeholderIdentifier != PlaceholderIdentifier.pgDefault) {
+        if (!(params is Map)) {
+          throw PostgresqlException(
+              'the [params] argument must be a `Map` when using placeholderIdentifier != pgDefault | onlyQuestionMark ');
+        }
+        final result = toStatement(sql, params,
+            placeholderIdentifier: placeholderIdentifier.value);
+        statement = result[0];
+        parameters = result[1];
+      }
+
+      var query = Query(statement, preparedParams: parameters);
       query.state = QueryState.init;
-      query.transactionContext = this;
-      query.isUnamedStatement = isUnamedStatement;
       query.error = null;
+      query.isUnamedStatement = isUnamedStatement;
       query.prepareStatementId = connection.prepareStatementId;
       connection.prepareStatementId++;
       query.queryType = QueryType.prepareStatement;

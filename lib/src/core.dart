@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'row_info.dart';
 import 'dependencies/sasl_scram/sasl_scram.dart';
+import 'to_statement.dart';
 import 'utils/utils.dart';
 
 import 'authentication_request_type.dart';
@@ -35,7 +36,7 @@ class CoreConnection {
   String? host;
   String? database;
   int port;
- late List<int> passwordBytes;
+  late List<int> passwordBytes;
   String sourceAddress;
   bool isUnixSocket = false;
   //SSLv3/TLS TLSv1.3
@@ -46,7 +47,7 @@ class CoreConnection {
   dynamic replication;
   // for SCRAM-SHA-256 auth
   ScramAuthenticator? scramAuthenticator;
- late AuthenticationRequestType authenticationRequestType;
+  late AuthenticationRequestType authenticationRequestType;
 
   /// The owner of the connection, or null if not available.
   ConnectionOwner? owner;
@@ -69,7 +70,7 @@ class CoreConnection {
   String defaultCodeCharset = 'ascii'; //ascii
   String textCharset = 'utf8'; //utf8
 
- late TypeConverter typeConverter;
+  late TypeConverter typeConverter;
 
   // var _commands_with_count = [
   //   "INSERT".codeUnits,
@@ -119,7 +120,7 @@ class CoreConnection {
 
   TransactionState transactionState = TransactionState.unknown;
 
- late Buffer _buffer;
+  late Buffer _buffer;
   // backend_key_data
   int backendPid = 0;
 
@@ -336,7 +337,7 @@ class CoreConnection {
       query.queryType = QueryType.simple;
       _enqueueQuery(query);
       await query.stream.toList();
-      return query.rowsAffected ;
+      return query.rowsAffected;
     } catch (ex, st) {
       return Future.error(ex, st);
     }
@@ -371,22 +372,60 @@ class CoreConnection {
   }
 
   /// execute a prepared unnamed statement
-  /// Example: com.queryUnnamed('select * from crud_teste.pessoas limit \$1', [1]);
-  Future<List<Row>> queryUnnamed(String sql, List params) async {
+  /// [params] parameters can be a list or a map,
+  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
+  /// it has to be a List, if different it has to be a Map
+  /// return Query prepared with statementName for execute with (executeStatement) method
+  /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
+  Future<List<Row>> queryUnnamed(
+    String sql,
+    dynamic params, {
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+  }) async {
     try {
-      var statement =
-          await prepareStatement(sql, params, isUnamedStatement: true);
+      var statement = await prepareStatement(sql, params,
+          isUnamedStatement: true,
+          placeholderIdentifier: placeholderIdentifier);
       return await executeStatement(statement);
     } catch (ex, st) {
       return Future.error(ex, st);
     }
   }
 
+  /// prepare statement
+  /// [params] parameters can be a list or a map,
+  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
+  /// it has to be a List, if different it has to be a Map
   /// return Query prepared with statementName for execute with (executeStatement) method
-  Future<Query> prepareStatement(String statement, List params,
-      {bool isUnamedStatement = false}) async {
+  /// Example:
+  /// var statement = await prepareStatement('SELECT * FROM table LIMIT $1', [0]);
+  /// var result await executeStatement(statement);
+  Future<Query> prepareStatement(
+    String sql,
+    dynamic params, {
+    bool isUnamedStatement = false,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+  }) async {
     try {
-      var query = Query(statement, preparedParams: params);
+      var parameters = params;
+      var statement = sql;
+
+      if (placeholderIdentifier == PlaceholderIdentifier.onlyQuestionMark) {
+        statement = toStatement2(sql);
+      } else if (placeholderIdentifier != PlaceholderIdentifier.pgDefault) {
+        if (!(params is Map)) {
+          throw PostgresqlException(
+              'the [params] argument must be a `Map` when using placeholderIdentifier != pgDefault | onlyQuestionMark ');
+        }
+        final result = toStatement(sql, params,
+            placeholderIdentifier: placeholderIdentifier.value);
+        statement = result[0];
+        parameters = result[1];
+      }
+
+      var query = Query(statement, preparedParams: parameters);
       query.state = QueryState.init;
       query.error = null;
       query.isUnamedStatement = isUnamedStatement;
@@ -404,7 +443,7 @@ class CoreConnection {
     }
   }
 
-  /// run Query prepared with (prepareStatement) method and return List of Row
+  /// run prepared query with (prepareStatement) method and return List of Row
   Future<List<Row>> executeStatement(Query query) {
     return executeStatementAsStream(query).toList();
   }
@@ -1000,7 +1039,7 @@ class CoreConnection {
       }
     }
     final msg = ServerNotice(false, map, connectionName);
-    _notices.add(msg);
+    if (!_notices.isClosed) _notices.add(msg);
     //print('handle_NOTICE_RESPONSE $map');
   }
 
@@ -1347,11 +1386,11 @@ class CoreConnection {
       // _socket = null;
       _destroy();
     }
-   // print('CoreConnection closed');
+    // print('CoreConnection closed');
   }
 
   void _destroy() {
-   // print('CoreConnection _destroy');
+    // print('CoreConnection _destroy');
     hasConnected = false;
     _connectionState = ConnectionState.closed;
     this._socket.destroy();

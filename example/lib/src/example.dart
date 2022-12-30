@@ -1,20 +1,19 @@
-
 import 'dart:io';
 import 'package:dargres/dargres.dart';
 
-void example1() async{
+void example1() async {
   var sslContext = SslContext.createDefaultContext();
 
   var con = CoreConnection(
-    'usermd5', 
+    'usermd5',
     database: 'sistemas',
-    host: 'localhost', 
+    host: 'localhost',
     port: 5432,
-    password: 's1sadm1n', 
+    password: 's1sadm1n',
     allowAttemptToReconnect: false,
     sslContext: sslContext,
   );
- 
+
   await con.connect();
   await con.execute('DROP SCHEMA IF EXISTS myschema CASCADE;');
   await con.execute('CREATE SCHEMA IF NOT EXISTS myschema;');
@@ -30,12 +29,30 @@ void example1() async{
 );
         ''');
 
-  await con.queryUnnamed(r'''
-INSERT INTO test_arrays
-(name, varchar_array_type,int8_array_type, int2_array_type, names_array_type)
- VALUES 
-($1, $2, $3, $4, $5);
-''', ['Vagner',["João",'''Isaque Sant'Ana'''],[1,2,3],[1,2,3],['name1']]);
+//   await con.queryUnnamed(r'''
+// INSERT INTO test_arrays
+// (name, varchar_array_type,int8_array_type, int2_array_type, names_array_type)
+//  VALUES
+// ($1, $2, $3, $4, $5);
+// ''', [
+//     'Vagner',
+//     ["João", '''Isaque Sant'Ana'''],
+//     [1, 2, null],
+//     [1, null, 3],
+//     ['name1']
+//   ]);
+
+  await con.queryUnnamed(
+    'INSERT INTO test_arrays (name, varchar_array_type,int8_array_type, int2_array_type, names_array_type) VALUES (?, ?, ?, ?, ?);',
+    [
+      'Vagner',
+      ["João", '''Isaque Sant'Ana'''],
+      [1, 2, null],
+      [1, null, 3],
+      ['name1']
+    ],
+    placeholderIdentifier: PlaceholderIdentifier.onlyQuestionMark,
+  );
 
   var results = await con.querySimple(r'''SELECT * FROM test_arrays;''');
 
@@ -44,9 +61,7 @@ INSERT INTO test_arrays
     // print("$cols");
     print(row.toColumnMap());
   }
- 
 
   await con.close();
-
   exit(0);
 }

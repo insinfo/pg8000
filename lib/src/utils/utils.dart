@@ -19,6 +19,38 @@ const LINUX_SOL_SOCKET = 0x1; //1;
 const LINUX_SO_KEEPALIVE = 0x0009; //9;
 
 class Utils {
+  ///
+  /// The isalnum() method returns True if all characters in the string are alphanumeric (either alphabets or numbers). If not, it returns False.
+  static bool isalnum(String? s) {
+    // alphanumeric
+    var validCharacters = RegExp(r'^[a-zA-Z0-9]+$');
+    if (s == null) {
+      return false;
+    }
+    return validCharacters.hasMatch(s);
+  }
+
+  /// false   // null
+  /// false   // ''
+  /// false   // 'x'
+  /// false   // '123x'
+  /// true    // '123'
+  /// true    // '+123'
+  /// true    // '123.456'
+  /// false   // '1,234.567'
+  /// false   // '1.234,567' (would be a valid number in Austria/Germany/...)
+  /// true    // '-123'
+  /// false   // 'INFINITY'
+  /// true    // double.INFINITY.toString()
+  /// true    // double.NAN.toString()
+  /// false   // '0x123'
+  static bool isNumeric(String? s) {
+    if (s == null) {
+      return false;
+    }
+    return double.tryParse(s) != null;
+  }
+
   static void enableKeepalive(Socket socket) {
     // Enable keepalive probes every 60 seconds with 3 retries each 10 seconds
     final keepaliveEnabled = true;
@@ -129,7 +161,7 @@ class Utils {
 
   /// https://ptyagicodecamp.github.io/dart-generators.html
   /// gera uma sequencia serial sobre demanda
-  static Iterable<int> sequence([int firstval = -1,int step = 1]) sync* {
+  static Iterable<int> sequence([int firstval = -1, int step = 1]) sync* {
     var x = firstval;
     while (true) {
       yield x += step;

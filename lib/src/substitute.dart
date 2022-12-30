@@ -1,3 +1,6 @@
+/// the substitute function is used to convert  
+/// "select color from crayons where id = @id" to "select color from crayons where id = $1"
+
 library postgresql.substitute;
 
 import 'dart:collection';
@@ -38,6 +41,8 @@ class ParseException {
       : '$message At character: $index, in source "$source"';
 }
 
+/// the substitute function is used to convert  
+/// "select color from crayons where id = @id" to "select color from crayons where id = $1"
 String substitute(String source, values, String encodeValue(value, String? type)) {
   _ValueEncoder valueEncoder;
   if (values is List) valueEncoder = _createListValueEncoder(values, encodeValue);

@@ -9,3 +9,10 @@
 ## 2.0.0
 
 - migrated to null safety 
+
+## 2.1.0
+
+- placeholder identifier option implemented in queryUnnamed and prepareStatement methods, 
+this makes it possible to use the style similar to PHP PDO in prepared 
+queries Example: 
+    ``` queryUnnamed('SELECT * FROM book WHERE title = ? AND code = ?',['title',10],placeholderIdentifier: PlaceholderIdentifier.onlyQuestionMark) ```
