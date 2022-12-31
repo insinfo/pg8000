@@ -571,6 +571,21 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
       ]);
     });
 
+    test('runInTransaction INSERT with prepareStatement and executeStatement inside query', () async {
+      await con.runInTransaction((ctx) async {
+        var query = await ctx.prepareStatement(
+            r'''INSERT INTO "myschema"."pessoas_cursos" ("idPessoa", "idCurso","name") VALUES ($1, $2 ,$3)''',
+            [10, 3, 'Isaque']);
+        await query.executeStatement();
+      });
+      var result = await con
+          .querySimple('select * from "myschema"."pessoas_cursos" limit 1');
+
+      expect(result, [
+        [1, 10, 3, 'Isaque']
+      ]);
+    });
+
     test('runInTransaction queryUnnamed INSERT with @ placeholder', () async {
       await con.runInTransaction((ctx) async {
          await ctx.queryUnnamed(

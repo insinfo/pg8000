@@ -50,6 +50,19 @@ class Query {
   int prepareStatementId = 0;
   bool isUnamedStatement = false;
 
+  CoreConnection? connection;
+
+  Future<List<Row>> executeStatement() {
+    if (_transactionContext != null) {
+      return _transactionContext!.executeStatement(this);
+    } else if (connection != null) {
+      return connection!.executeStatement(this);
+    } else {
+      throw PostgresqlException(
+          'no connection or transactionContext for execute statement');
+    }
+  }
+
   /// generate unique name for named prepared Statement
   String get statementName => isUnamedStatement == false
       ? '$prepareStatementId'.padLeft(12, '0')
@@ -57,7 +70,7 @@ class Query {
 
   QueryState state = QueryState.queued;
 
-  int rowsAffected = 0;
+  RowsAffected rowsAffected = RowsAffected();
 
   /// params for prepared querys
   List? _params;
@@ -100,12 +113,11 @@ class Query {
     _transactionContext = ctx;
   }
 
-  Future<List<Row>> executeStatement() {
-    return _transactionContext!.executeStatement(this);
-  }
-
   StreamController<Row> _controller = StreamController<Row>();
-  Stream<Row> get stream => _controller.stream;
+  //Stream<Row> get stream => _controller.stream;
+  //ResultStream<Row> get stream => ResultStream(_controller.stream, rowsAffected);
+
+  ResultStream<Row> get stream => _controller.asResultStream(rowsAffected);
 
   bool get streamIsClosed {
     return _controller.isClosed;
@@ -116,14 +128,14 @@ class Query {
     _controller = StreamController<Row>();
   }
 
-  Query(
-    this.sql, {
-    List? preparedParams,
-    this.prepareStatementId = 0,
-    List? oidsP,
-    this.columns,
-    //this.input_funcs = const [],
-  }) {
+  Query(this.sql,
+      {List? preparedParams,
+      this.prepareStatementId = 0,
+      List? oidsP,
+      this.columns,
+      this.connection
+      //this.input_funcs = const [],
+      }) {
     _params = preparedParams;
 
     if (oidsP != null) {
@@ -134,14 +146,14 @@ class Query {
   }
 
   Query clone() {
-    final newQuery = new Query(
-      sql,
-      columns: columns,
-      prepareStatementId: prepareStatementId,
-      preparedParams: preparedParams,
-      oidsP: oids,
-      //input_funcs: this.input_funcs,
-    );
+    final newQuery = new Query(sql,
+        columns: columns,
+        prepareStatementId: prepareStatementId,
+        preparedParams: preparedParams,
+        oidsP: oids,
+        connection: connection
+        //input_funcs: this.input_funcs,
+        );
     newQuery.queryType = queryType;
     newQuery.columnCount = columnCount;
     newQuery.rowCount = rowCount;

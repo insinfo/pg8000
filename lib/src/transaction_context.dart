@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'package:dargres/dargres.dart';
 import 'package:dargres/src/core.dart';
 
 import 'exceptions.dart';
@@ -27,7 +28,7 @@ class TransactionContext {
       query.queryType = QueryType.simple;
       _enqueueQuery(query);
       await query.stream.toList();
-      return query.rowsAffected;
+      return query.rowsAffected.value;
     } catch (ex, st) {
       return Future.error(ex, st);
     }
@@ -36,32 +37,31 @@ class TransactionContext {
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Future<List<Row>> querySimple(String statement) {
-    return querySimpleAsStream(statement).toList();
+  Future<Results<Row>> querySimple(String sql) {
+    return querySimpleAsStream(sql).toResults();
   }
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
-  Stream<Row> querySimpleAsStream(String statement) {
+  ResultStream<Row> querySimpleAsStream(String sql) {
     try {
-      Query query = Query(statement);
-
+      Query query = Query(sql);
       query.state = QueryState.init;
       query.queryType = QueryType.simple;
       _enqueueQuery(query);
       return query.stream;
     } catch (ex, st) {
-      return Stream.fromFuture(Future.error(ex, st));
+      return ResultStream.fromFuture(Future.error(ex, st));
     }
   }
 
- /// execute a prepared unnamed statement
+  /// execute a prepared unnamed statement
   /// [params] parameters can be a list or a map,
   /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
   /// it has to be a List, if different it has to be a Map
   /// return Query prepared with statementName for execute with (executeStatement) method
   /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
-  Future<List<Row>> queryUnnamed(
+  Future<Results<Row>> queryUnnamed(
     String sql,
     dynamic params, {
     PlaceholderIdentifier placeholderIdentifier =
@@ -111,6 +111,7 @@ class TransactionContext {
 
       var query = Query(statement, preparedParams: parameters);
       query.state = QueryState.init;
+      query.transactionContext = this;
       query.error = null;
       query.isUnamedStatement = isUnamedStatement;
       query.prepareStatementId = connection.prepareStatementId;
@@ -128,21 +129,25 @@ class TransactionContext {
   }
 
   /// run Query prepared with (prepareStatement) method and return List of Row
-  Future<List<Row>> executeStatement(Query query) {
-    return executeStatementAsStream(query).toList();
+  Future<Results<Row>> executeStatement(Query query) {
+    return executeStatementAsStream(query).toResults();
   }
 
   /// run Query prepared with (prepareStatement) method and return Stream of Row
-  Stream<Row> executeStatementAsStream(Query query) {
-    //cria uma copia
-    //var newQuery = query.clone();
-    var newQuery = query;
-    newQuery.error = null;
-    query.reInitStream();
-    newQuery.state = QueryState.init;
-    newQuery.queryType = QueryType.namedStatement;
-    _enqueueQuery(newQuery);
-    return newQuery.stream;
+  ResultStream<Row> executeStatementAsStream(Query query) {
+    try {
+      //cria uma copia
+      var newQuery = query; //query.clone();
+      newQuery.error = null;
+      newQuery.state = QueryState.init;
+      newQuery.reInitStream();
+      //print('execute_named ');
+      newQuery.queryType = QueryType.namedStatement;
+      _enqueueQuery(newQuery);
+      return newQuery.stream;
+    } catch (ex, st) {
+      return ResultStream.fromFuture(Future.error(ex, st));
+    }
   }
 
   /// coloca a query na fila

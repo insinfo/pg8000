@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'results.dart';
 import 'row_info.dart';
 import 'dependencies/sasl_scram/sasl_scram.dart';
 import 'to_statement.dart';
@@ -337,7 +338,7 @@ class CoreConnection {
       query.queryType = QueryType.simple;
       _enqueueQuery(query);
       await query.stream.toList();
-      return query.rowsAffected;
+      return query.rowsAffected.value;
     } catch (ex, st) {
       return Future.error(ex, st);
     }
@@ -346,28 +347,27 @@ class CoreConnection {
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Future<List<Row>> querySimple(String statement) {
-    return querySimpleAsStream(statement).toList();
+  Future<Results<Row>> querySimple(String sql) async {
+    return querySimpleAsStream(sql).toResults();
   }
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Stream<Row> querySimpleAsStream(String statement) {
+  ResultStream<Row> querySimpleAsStream(String sql) {
     try {
       // if (params != null) {
       //   statement = substitute(statement, params, typeConverter.encodeValue);
       // }
-      Query query = Query(statement);
-
-      //var query = Query(statement);
+      var query = Query(sql);
       query.state = QueryState.init;
       query.queryType = QueryType.simple;
-      // print('call executeSimple: $statement');
       _enqueueQuery(query);
-      return query.stream;
+      var resultStream = query.stream;
+      resultStream.rowsAffected = query.rowsAffected;
+      return resultStream;
     } catch (ex, st) {
-      return Stream.fromFuture(Future.error(ex, st));
+      return ResultStream.fromFuture(Future.error(ex, st));
     }
   }
 
@@ -377,7 +377,7 @@ class CoreConnection {
   /// it has to be a List, if different it has to be a Map
   /// return Query prepared with statementName for execute with (executeStatement) method
   /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
-  Future<List<Row>> queryUnnamed(
+  Future<Results<Row>> queryUnnamed(
     String sql,
     dynamic params, {
     PlaceholderIdentifier placeholderIdentifier =
@@ -427,6 +427,7 @@ class CoreConnection {
 
       var query = Query(statement, preparedParams: parameters);
       query.state = QueryState.init;
+      query.connection = this;
       query.error = null;
       query.isUnamedStatement = isUnamedStatement;
       query.prepareStatementId = prepareStatementId;
@@ -444,12 +445,12 @@ class CoreConnection {
   }
 
   /// run prepared query with (prepareStatement) method and return List of Row
-  Future<List<Row>> executeStatement(Query query) {
-    return executeStatementAsStream(query).toList();
+  Future<Results<Row>> executeStatement(Query query) {
+    return executeStatementAsStream(query).toResults();
   }
 
   /// run Query prepared with (prepareStatement) method
-  Stream<Row> executeStatementAsStream(Query query) {
+  ResultStream<Row> executeStatementAsStream(Query query) {
     try {
       //cria uma copia
       var newQuery = query; //query.clone();
@@ -461,7 +462,7 @@ class CoreConnection {
       _enqueueQuery(newQuery);
       return newQuery.stream;
     } catch (ex, st) {
-      return Stream.fromFuture(Future.error(ex, st));
+      return ResultStream.fromFuture(Future.error(ex, st));
     }
   }
 
@@ -952,10 +953,9 @@ class CoreConnection {
     if (query != null) {
       query.state = QueryState.done;
       //query.commandIndex++;
-      query.rowsAffected = rowsAffected;
+      query.rowsAffected.value = rowsAffected;
+      //print("handle_COMMAND_COMPLETE ${query.rowsAffected.value}");
     }
-
-    //print("handle_COMMAND_COMPLETE");
   }
 
   /// [statement_name_bin] name statement bytes
