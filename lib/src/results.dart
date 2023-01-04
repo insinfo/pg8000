@@ -1,26 +1,28 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'package:dargres/dargres.dart';
+
 class RowsAffected {
   int value = 0;
   RowsAffected();
 }
 
-class ResultStream<T> extends StreamView<T> {
+class ResultStream extends StreamView<Row> {
   RowsAffected rowsAffected;
-  ResultStream(Stream<T> stream, this.rowsAffected) : super(stream);
+  ResultStream(Stream<Row> stream, this.rowsAffected) : super(stream);
 
   /// Creates a new single-subscription stream from the future.
   ///
   /// When the future completes, the stream will fire one event, either
   /// data or error, and then close with a done-event.
-  factory ResultStream.fromFuture(Future<T> future) {
+  factory ResultStream.fromFuture(Future<dynamic> future) {
     //return ResultStream<T>(Stream.fromFuture(future));
 
     // Use the controller's buffering to fill in the value even before
     // the stream has a listener. For a single value, it's not worth it
     // to wait for a listener before doing the `then` on the future.
-    StreamController<T> controller = new StreamController<T>();
+    StreamController<dynamic> controller = new StreamController<dynamic>();
     future.then((value) {
       controller.add(value);
       controller.close();
@@ -34,18 +36,18 @@ class ResultStream<T> extends StreamView<T> {
 }
 
 extension ResultStreamControllerExtension<T> on StreamController<T> {
-  ResultStream<T> asResultStream([RowsAffected? rowsAffected]) {
+  ResultStream asResultStream([RowsAffected? rowsAffected]) {
     //print('ResultStreamController@asResultStream ${rowsAffected?.value}');
-    return ResultStream<T>(
-        this.stream, rowsAffected == null ? RowsAffected() : rowsAffected);
+    return ResultStream(this.stream as Stream<Row>,
+        rowsAffected == null ? RowsAffected() : rowsAffected);
   }
 }
 
-extension StreamToResultsExtension<T> on ResultStream<T> {
-  Future<Results<T>> toResults() {
+extension StreamToResultsExtension on ResultStream {
+  Future<Results> toResults() {
     //print('StreamToResults@toResults ${rowsAffected.value}');
-    var result = Results<T>([], this.rowsAffected);
-    var completer = new Completer<Results<T>>();
+    var result = Results([], this.rowsAffected);
+    var completer = new Completer<Results>();
     this.listen(
         (data) {
           result.add(data);
@@ -58,9 +60,9 @@ extension StreamToResultsExtension<T> on ResultStream<T> {
     return completer.future;
   }
 }
-
-class Results<T> extends ListBase<T> {
-  final List<T> rows;
+/// this is Result set of Rows from database
+class Results extends ListBase<Row> {
+  final List<Row> rows;
   final RowsAffected rowsAffected;
   Results(this.rows, this.rowsAffected);
 
@@ -72,18 +74,23 @@ class Results<T> extends ListBase<T> {
   }
 
   @override
-  void add(T element) {
+  void add(Row element) {
     rows.add(element);
   }
 
   @override
-  void addAll(Iterable<T> iterable) {
+  void addAll(Iterable<Row> iterable) {
     rows.addAll(iterable);
+  }
+
+  /// return List of Row as Map
+  List<Map<String, dynamic>> toMaps() {
+    return rows.map((e) => e.toColumnMap()).toList();
   }
 
   @override
   void operator []=(int index, value) {
-    print('operator [] $index');
+    //print('operator [] $index');
     //rows[index] = value;
     //this[this.length++] = element;
     rows[index] = value;

@@ -16,3 +16,8 @@
 this makes it possible to use the style similar to PHP PDO in prepared 
 queries Example: 
     ``` queryUnnamed('SELECT * FROM book WHERE title = ? AND code = ?',['title',10],placeholderIdentifier: PlaceholderIdentifier.onlyQuestionMark) ```
+
+
+## 2.2.0
+
+- implemented ResultStream and Results class for return data from queryUnnamed and querySimple

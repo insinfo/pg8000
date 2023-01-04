@@ -1,17 +1,17 @@
 import 'dart:io';
 import 'package:dargres/dargres.dart';
 
-void example1() async {
-  var sslContext = SslContext.createDefaultContext();
-
-  var con = CoreConnection(
+Future<void> example1() async {
+ // var sslContext = SslContext.createDefaultContext();
+CoreConnection? con;
+   con = CoreConnection(
     'usermd5',
     database: 'sistemas',
     host: 'localhost',
     port: 5432,
     password: 's1sadm1n',
     allowAttemptToReconnect: false,
-    sslContext: sslContext,
+    //sslContext: sslContext,
   );
 
   await con.connect();
@@ -20,12 +20,12 @@ void example1() async {
 //   await con.execute('SET search_path TO myschema;');
 
 //   await con.execute('''
-//         CREATE TABLE "myschema"."test_arrays" ( 
+//         CREATE TABLE "myschema"."test_arrays" (
 //           name NAME,
-//   varchar_array_type varchar[], 
+//   varchar_array_type varchar[],
 //   int8_array_type int8[],
 //   int2_array_type int2[],
-//   names_array_type NAME[]  
+//   names_array_type NAME[]
 // );
 //         ''');
 
@@ -55,7 +55,13 @@ void example1() async {
   // );
   //print('rowsAffected: ${rea.rowsAffected}');
 
-  var results = await con.execute(r'''SELECT * FROM myschema.test_arrays;''');
+  //var results = await con.querySimple(r'''SELECT * FROM myschema.test_arrays;''');
+
+  var query = await con.prepareStatement(
+      'select * from "table_01" inner join "table_02" on "table_02"."idtb1" in "(10,11)" limit 1',
+      [],placeholderIdentifier: PlaceholderIdentifier.onlyQuestionMark);
+      print('main.dart fim prepareStatement');
+  var results = await con.executeStatement(query);
   print('results rowsAffected: ${results}');
   // for (var row in results) {
   //   // var cols = row.map((c) => '$c' + ' ${c.runtimeType}\r\n').join('');
@@ -63,6 +69,6 @@ void example1() async {
   //   print(row.toColumnMap());
   // }
 
-  await con.close();
-  exit(0);
+  //await con.close();
+  //exit(0);
 }

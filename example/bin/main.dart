@@ -2,7 +2,7 @@
 import 'package:example_dargres/src/example.dart';
 
 void main(List<String> args) async {
-   example1();
+  await example1();
   //'SELECT * FROM book WHERE title = ?, AND code = ?,'
   //INSERT INTO book (title,code) VALUES (?, ?)
   //SELECT * FROM book WHERE title = ? AND code = ?

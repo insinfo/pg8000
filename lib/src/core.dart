@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'execution_context.dart';
 import 'results.dart';
 import 'row_info.dart';
 import 'dependencies/sasl_scram/sasl_scram.dart';
@@ -32,7 +33,7 @@ import 'connection_state.dart';
 
 import 'transaction_state.dart';
 
-class CoreConnection {
+class CoreConnection implements ExecutionContext {
   late List<int> userBytes;
   String? host;
   String? database;
@@ -347,14 +348,14 @@ class CoreConnection {
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Future<Results<Row>> querySimple(String sql) async {
+  Future<Results> querySimple(String sql) async {
     return querySimpleAsStream(sql).toResults();
   }
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  ResultStream<Row> querySimpleAsStream(String sql) {
+  ResultStream querySimpleAsStream(String sql) {
     try {
       // if (params != null) {
       //   statement = substitute(statement, params, typeConverter.encodeValue);
@@ -377,7 +378,7 @@ class CoreConnection {
   /// it has to be a List, if different it has to be a Map
   /// return Query prepared with statementName for execute with (executeStatement) method
   /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
-  Future<Results<Row>> queryUnnamed(
+  Future<Results> queryUnnamed(
     String sql,
     dynamic params, {
     PlaceholderIdentifier placeholderIdentifier =
@@ -409,23 +410,8 @@ class CoreConnection {
         PlaceholderIdentifier.pgDefault,
   }) async {
     try {
-      var parameters = params;
-      var statement = sql;
-
-      if (placeholderIdentifier == PlaceholderIdentifier.onlyQuestionMark) {
-        statement = toStatement2(sql);
-      } else if (placeholderIdentifier != PlaceholderIdentifier.pgDefault) {
-        if (!(params is Map)) {
-          throw PostgresqlException(
-              'the [params] argument must be a `Map` when using placeholderIdentifier != pgDefault | onlyQuestionMark ');
-        }
-        final result = toStatement(sql, params,
-            placeholderIdentifier: placeholderIdentifier.value);
-        statement = result[0];
-        parameters = result[1];
-      }
-
-      var query = Query(statement, preparedParams: parameters);
+      var query = Query(sql,
+          params: params, placeholderIdentifier: placeholderIdentifier);
       query.state = QueryState.init;
       query.connection = this;
       query.error = null;
@@ -434,23 +420,26 @@ class CoreConnection {
       prepareStatementId++;
       query.queryType = QueryType.prepareStatement;
       _enqueueQuery(query);
-      await query.stream.toList();
+      //print('core@prepareStatement before');
+      await query.stream.isEmpty;
+      // print('core@prepareStatement after');
       //cria uma copia
       // var newQuery = query.clone();
       // return newQuery;
       return query;
     } catch (ex, st) {
+      //print('core@prepareStatement error');
       return Future.error(ex, st);
     }
   }
 
   /// run prepared query with (prepareStatement) method and return List of Row
-  Future<Results<Row>> executeStatement(Query query) {
+  Future<Results> executeStatement(Query query) {
     return executeStatementAsStream(query).toResults();
   }
 
   /// run Query prepared with (prepareStatement) method
-  ResultStream<Row> executeStatementAsStream(Query query) {
+  ResultStream executeStatementAsStream(Query query) {
     try {
       //cria uma copia
       var newQuery = query; //query.clone();
@@ -476,7 +465,7 @@ class CoreConnection {
     return transaction;
   }
 
-  Future<dynamic> rollBack(TransactionContext transaction) async {
+  Future<void> rollBack(TransactionContext transaction) async {
     await transaction.execute('ROLLBACK');
     //if (transaction == _currentTransaction)
     //print('rollBack id ${_currentTransaction?.transactionId}');
@@ -484,7 +473,7 @@ class CoreConnection {
     //print('rollBack $_currentTransaction');
   }
 
-  Future<dynamic> commit(TransactionContext transaction) async {
+  Future<void> commit(TransactionContext transaction) async {
     await transaction.execute('COMMIT');
     // if (transaction == _currentTransaction)
     //print('commit id ${_currentTransaction?.transactionId}');
@@ -547,14 +536,6 @@ class CoreConnection {
 
   /// coloca a query na fila
   Future<void> _enqueueQuery(Query query) async {
-    if (query.sql == '') {
-      throw PostgresqlException('SQL query is null or empty.');
-    }
-
-    if (query.sql.contains('\u0000')) {
-      throw PostgresqlException('Sql query contains a null character.');
-    }
-
     if (_connectionState == ConnectionState.closed) {
       //tenta se reconectar
       if (_tryReconnectCount <= tryReconnectLimit &&
@@ -634,7 +615,7 @@ class CoreConnection {
     // execute_simple
     // print('send execute_simple ');
     _send_message(QUERY,
-        [...typeConverter.charsetEncode(query.sql, textCharset), NULL_BYTE]);
+        [...typeConverter.charsetEncode(query.getSql, textCharset), NULL_BYTE]);
     await this._sock_flush();
   }
 
@@ -644,7 +625,7 @@ class CoreConnection {
       ...typeConverter.charsetEncode(query.statementName, defaultCodeCharset),
       NULL_BYTE
     ];
-    _send_PARSE(statementNameBytes, query.sql, query.oids);
+    _send_PARSE(statementNameBytes, query.getSql, query.oids);
     _send_DESCRIBE_STATEMENT(statementNameBytes);
     this._sock_write(SYNC_MSG);
     await this._sock_flush();
@@ -725,7 +706,7 @@ class CoreConnection {
       int msgType = _buffer.readByte();
       int length = _buffer.readInt32() - 4;
 
-      // print('_readData code: ${pgCodeString(msgType)} $msgType');
+      //print('_readData code: ${pgCodeString(msgType)} $msgType');
       final messageBytes = _buffer.readBytes(length);
 
       switch (msgType) {
@@ -821,25 +802,31 @@ class CoreConnection {
         hasConnected = true;
         _connected.complete(this);
       }
-      final query = _query;
 
-      //print('handle_READY_FOR_QUERY ${query?.queryType} ${query?.state}');
-
-      //fix async call
-      if (query?.queryType == QueryType.prepareStatement &&
-          query?.error == null) {
-        query?.state = QueryState.done;
-        query?.close();
+      //print( 'handle_READY_FOR_QUERY ${_query?.queryType} | ${_query?.state} | ${_query?.error}');
+      if (_query != null) {
+        //print('_query != null');
+        final query = _query!;
+        if (query.error != null) {
+          query.addStreamError(query.error!, query.stackTrace);
+        }
+        query.close();
         _query = null;
-      }
-      if (query?.state == QueryState.done) {
-        query?.close();
-        _query = null;
-      }
-      if (query?.state == QueryState.error) {
-        query?.addStreamError(_query!.error!, query.stackTrace);
-        _query = null;
-        //print('handle_READY_FOR_QUERY throw');
+        //fix async call
+        // if (query.queryType == QueryType.prepareStatement) {
+        //   if (query.error != null) {
+        //     query.state = QueryState.done;
+        //   }
+        // }
+        // if (query.state == QueryState.done) {
+        //   query.close();
+        //   _query = null;
+        // }
+        // if (query.state == QueryState.error) {
+        //   query.addStreamError(query.error!, query.stackTrace);
+        //   _query = null;
+        //   print('handle_READY_FOR_QUERY throw');
+        // }
       }
 
       Timer.run(_processSendQueryQueue);
@@ -1249,7 +1236,9 @@ class CoreConnection {
       if (query != null) {
         query.state = QueryState.error;
         query.error = PostgresqlException(msg,
-            errorCode: error, connectionName: connectionName, sql: query.sql);
+            errorCode: error,
+            connectionName: connectionName,
+            sql: query.getSql);
       } else {
         _notices.add(ClientNotice(
             isError: true,
@@ -1310,7 +1299,7 @@ class CoreConnection {
       serverMessage: msg,
       errorCode: msg.code,
       serverErrorCode: msg.code,
-      sql: _query?.sql,
+      sql: _query?.getSql,
     );
 
     //print('handle_ERROR_RESPONSE $map ');
@@ -1321,14 +1310,18 @@ class CoreConnection {
       _connected.completeError(postgresqlException);
       //hasConnected = false;
     } else {
-      final query = _query;
-      if (query != null) {
-        query.state = QueryState.error;
-        query.error = postgresqlException;
-        // query.stackTrace = StackTrace.current;
-      } else {
-        _notices.add(msg);
-      }
+      //final query = _query;
+      _query!.error = postgresqlException;
+      _query!.state = QueryState.error;
+
+      // print('handle_ERROR_RESPONSE $_query');
+      // if (query != null) {
+      //   query.state = QueryState.error;
+      //   query.error = postgresqlException;
+      //   // query.stackTrace = StackTrace.current;
+      // } else {
+      //   _notices.add(msg);
+      // }
       //if code is 57P01 postgresql restart
       if (msg.code?.startsWith('57P') ?? false) {
         //PG stop/restart

@@ -43,7 +43,9 @@ class QueryType {
 
 class Query {
   //statement sql string
-  final String sql;
+  late String _sql;
+
+  String get getSql => _sql;
 
   /// for prepared named statement
 
@@ -52,7 +54,7 @@ class Query {
 
   CoreConnection? connection;
 
-  Future<List<Row>> executeStatement() {
+  Future<Results> executeStatement() {
     if (_transactionContext != null) {
       return _transactionContext!.executeStatement(this);
     } else if (connection != null) {
@@ -89,9 +91,6 @@ class Query {
   List get preparedParams => _params != null ? _params! : [];
   List get oids => _oids;
 
-  /// funções de conversão de tipo para as colunas
-  //List<Function> input_funcs = [];
-  //List<List> _rows;
   int rowCount = -1;
   int columnCount = 0;
 
@@ -117,7 +116,7 @@ class Query {
   //Stream<Row> get stream => _controller.stream;
   //ResultStream<Row> get stream => ResultStream(_controller.stream, rowsAffected);
 
-  ResultStream<Row> get stream => _controller.asResultStream(rowsAffected);
+  ResultStream get stream => _controller.asResultStream(rowsAffected);
 
   bool get streamIsClosed {
     return _controller.isClosed;
@@ -128,15 +127,45 @@ class Query {
     _controller = StreamController<Row>();
   }
 
-  Query(this.sql,
-      {List? preparedParams,
+  final PlaceholderIdentifier placeholderIdentifier;
+
+  void _formatSql(dynamic params) {
+    var parameters = params;
+
+    if (placeholderIdentifier == PlaceholderIdentifier.onlyQuestionMark) {
+      _sql = toStatement2(_sql);
+    } else if (placeholderIdentifier != PlaceholderIdentifier.pgDefault) {
+      if (!(params is Map)) {
+        throw PostgresqlException(
+            'the [params] argument must be a `Map` when using placeholderIdentifier != pgDefault | onlyQuestionMark ');
+      }
+      final result = toStatement(_sql, params,
+          placeholderIdentifier: placeholderIdentifier.value);
+      _sql = result[0];
+      parameters = result[1];
+    }
+
+    _params = parameters;
+  }
+
+  Query(String sql,
+      {dynamic params,
       this.prepareStatementId = 0,
       List? oidsP,
       this.columns,
-      this.connection
-      //this.input_funcs = const [],
-      }) {
-    _params = preparedParams;
+      this.connection,
+      this.placeholderIdentifier = PlaceholderIdentifier.pgDefault}) {
+    if (sql == '') {
+      throw PostgresqlException('SQL query is null or empty.');
+    }
+
+    if (sql.contains('\u0000')) {
+      throw PostgresqlException('Sql query contains a null character.');
+    }
+    _sql = sql;
+    if (params != null) {
+      _formatSql(params);
+    }
 
     if (oidsP != null) {
       _oids = oidsP;
@@ -146,10 +175,10 @@ class Query {
   }
 
   Query clone() {
-    final newQuery = new Query(sql,
+    final newQuery = new Query(_sql,
         columns: columns,
         prepareStatementId: prepareStatementId,
-        preparedParams: preparedParams,
+        params: preparedParams,
         oidsP: oids,
         connection: connection
         //input_funcs: this.input_funcs,
@@ -165,8 +194,8 @@ class Query {
     return newQuery;
   }
 
-  void addPreparedParams(List params, [List? oidsP]) {
-    _params = params;
+  void addPreparedParams(dynamic params, [List? oidsP]) {
+     _formatSql(params);
     if (oidsP != null) {
       _oids = oidsP;
     }

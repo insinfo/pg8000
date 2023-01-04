@@ -1,16 +1,12 @@
 import 'dart:async';
 import 'dart:collection';
-
 import 'package:dargres/dargres.dart';
 import 'package:dargres/src/core.dart';
-
-import 'exceptions.dart';
-
+import 'execution_context.dart';
 import 'query.dart';
-import 'row_info.dart';
 import 'to_statement.dart';
 
-class TransactionContext {
+class TransactionContext implements ExecutionContext {
   final int transactionId;
   // fila de querys a serem executadas nesta transação
   final Queue<Query> sendQueryQueue = Queue<Query>();
@@ -37,13 +33,13 @@ class TransactionContext {
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Future<Results<Row>> querySimple(String sql) {
+  Future<Results> querySimple(String sql) {
     return querySimpleAsStream(sql).toResults();
   }
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
-  ResultStream<Row> querySimpleAsStream(String sql) {
+  ResultStream querySimpleAsStream(String sql) {
     try {
       Query query = Query(sql);
       query.state = QueryState.init;
@@ -61,7 +57,7 @@ class TransactionContext {
   /// it has to be a List, if different it has to be a Map
   /// return Query prepared with statementName for execute with (executeStatement) method
   /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
-  Future<Results<Row>> queryUnnamed(
+  Future<Results> queryUnnamed(
     String sql,
     dynamic params, {
     PlaceholderIdentifier placeholderIdentifier =
@@ -93,23 +89,8 @@ class TransactionContext {
         PlaceholderIdentifier.pgDefault,
   }) async {
     try {
-      var parameters = params;
-      var statement = sql;
-
-      if (placeholderIdentifier == PlaceholderIdentifier.onlyQuestionMark) {
-        statement = toStatement2(sql);
-      } else if (placeholderIdentifier != PlaceholderIdentifier.pgDefault) {
-        if (!(params is Map)) {
-          throw PostgresqlException(
-              'the [params] argument must be a `Map` when using placeholderIdentifier != pgDefault | onlyQuestionMark ');
-        }
-        final result = toStatement(sql, params,
-            placeholderIdentifier: placeholderIdentifier.value);
-        statement = result[0];
-        parameters = result[1];
-      }
-
-      var query = Query(statement, preparedParams: parameters);
+      var query = Query(sql,
+          params: params, placeholderIdentifier: placeholderIdentifier);
       query.state = QueryState.init;
       query.transactionContext = this;
       query.error = null;
@@ -129,12 +110,12 @@ class TransactionContext {
   }
 
   /// run Query prepared with (prepareStatement) method and return List of Row
-  Future<Results<Row>> executeStatement(Query query) {
+  Future<Results> executeStatement(Query query) {
     return executeStatementAsStream(query).toResults();
   }
 
   /// run Query prepared with (prepareStatement) method and return Stream of Row
-  ResultStream<Row> executeStatementAsStream(Query query) {
+  ResultStream executeStatementAsStream(Query query) {
     try {
       //cria uma copia
       var newQuery = query; //query.clone();
@@ -152,14 +133,6 @@ class TransactionContext {
 
   /// coloca a query na fila
   void _enqueueQuery(Query query) {
-    if (query.sql == '') {
-      throw PostgresqlException('SQL query is null or empty.');
-    }
-
-    if (query.sql.contains('\u0000')) {
-      throw PostgresqlException('Sql query contains a null character.');
-    }
-
     query.state = QueryState.queued;
     sendQueryQueue.addLast(query);
   }
