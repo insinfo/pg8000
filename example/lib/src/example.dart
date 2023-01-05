@@ -1,10 +1,11 @@
+import 'dart:async';
 
 import 'package:dargres/dargres.dart';
 
 Future<void> example1() async {
- // var sslContext = SslContext.createDefaultContext();
-CoreConnection? con;
-   con = CoreConnection(
+  // var sslContext = SslContext.createDefaultContext();
+
+  var con = CoreConnection(
     'usermd5',
     database: 'sistemas',
     host: 'localhost',
@@ -17,7 +18,7 @@ CoreConnection? con;
   await con.connect();
 //   await con.execute('DROP SCHEMA IF EXISTS myschema CASCADE;');
 //   await con.execute('CREATE SCHEMA IF NOT EXISTS myschema;');
-//   await con.execute('SET search_path TO myschema;');
+  await con.execute('SET search_path TO myschema;');
 
 //   await con.execute('''
 //         CREATE TABLE "myschema"."test_arrays" (
@@ -57,17 +58,30 @@ CoreConnection? con;
 
   //var results = await con.querySimple(r'''SELECT * FROM myschema.test_arrays;''');
 
-  var query = await con.prepareStatement(
-      'select * from "table_01" inner join "table_02" on "table_02"."idtb1" in "(10,11)" limit 1',
-      [],placeholderIdentifier: PlaceholderIdentifier.onlyQuestionMark);
-      print('main.dart fim prepareStatement');
-  var results = await con.executeStatement(query);
-  print('results rowsAffected: ${results}');
+  // var query = await con.prepareStatement(
+  //     'select * from "table_01" inner join "table_02" on "table_02"."idtb1" in "(10,11)" limit 1',
+  //     [],placeholderIdentifier: PlaceholderIdentifier.onlyQuestionMark);
+  //     print('main.dart fim prepareStatement');
+  // var results = await con.executeStatement(query);
+  // print('results rowsAffected: ${results}');
   // for (var row in results) {
   //   // var cols = row.map((c) => '$c' + ' ${c.runtimeType}\r\n').join('');
   //   // print("$cols");
   //   print(row.toColumnMap());
   // }
+
+  Timer.periodic(Duration(milliseconds: 2000), (timer) async {
+    try {
+      var res = await con.queryUnnamed('select * from "temp_location"', []);
+      print('Timer.periodic $res');
+    } catch (e) {
+      print('error $e');
+      if ('$e'.contains('57P')) {
+        await con.connect();
+        await con.execute('SET search_path TO myschema;');
+      }
+    }
+  });
 
   //await con.close();
   //exit(0);

@@ -18,37 +18,38 @@ class TransactionContext implements ExecutionContext {
   /// Execute a sql command e return affected row count
   /// Example: con.execute('select * from crud_teste.pessoas limit 1')
   Future<int> execute(String sql) async {
-    try {
-      var query = Query(sql);
-      query.state = QueryState.init;
-      query.queryType = QueryType.simple;
-      _enqueueQuery(query);
-      await query.stream.toList();
-      return query.rowsAffected.value;
-    } catch (ex, st) {
-      return Future.error(ex, st);
-    }
+    //try {
+    var query = Query(sql);
+    query.state = QueryState.init;
+    query.queryType = QueryType.simple;
+    _enqueueQuery(query);
+    await query.stream.toList();
+    return query.rowsAffected.value;
+    //} catch (ex, st) {
+    //   return Future.error(ex, st);
+    // }
   }
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Future<Results> querySimple(String sql) {
-    return querySimpleAsStream(sql).toResults();
+  Future<Results> querySimple(String sql) async {
+    var r = await querySimpleAsStream(sql);
+    return r.toResults();
   }
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
-  ResultStream querySimpleAsStream(String sql) {
-    try {
-      Query query = Query(sql);
-      query.state = QueryState.init;
-      query.queryType = QueryType.simple;
-      _enqueueQuery(query);
-      return query.stream;
-    } catch (ex, st) {
-      return ResultStream.fromFuture(Future.error(ex, st));
-    }
+  Future<ResultStream> querySimpleAsStream(String sql) async {
+    //try {
+    Query query = Query(sql);
+    query.state = QueryState.init;
+    query.queryType = QueryType.simple;
+    _enqueueQuery(query);
+    return query.stream;
+    // } catch (ex, st) {
+    //   return ResultStream.fromFuture(Future.error(ex, st));
+    // }
   }
 
   /// execute a prepared unnamed statement
@@ -63,14 +64,13 @@ class TransactionContext implements ExecutionContext {
     PlaceholderIdentifier placeholderIdentifier =
         PlaceholderIdentifier.pgDefault,
   }) async {
-    try {
-      var statement = await prepareStatement(sql, params,
-          isUnamedStatement: true,
-          placeholderIdentifier: placeholderIdentifier);
-      return await executeStatement(statement);
-    } catch (ex, st) {
-      return Future.error(ex, st);
-    }
+    // try {
+    var statement = await prepareStatement(sql, params,
+        isUnamedStatement: true, placeholderIdentifier: placeholderIdentifier);
+    return executeStatement(statement);
+    // } catch (ex, st) {
+    //   return Future.error(ex, st);
+    // }
   }
 
   /// prepare statement
@@ -88,47 +88,48 @@ class TransactionContext implements ExecutionContext {
     PlaceholderIdentifier placeholderIdentifier =
         PlaceholderIdentifier.pgDefault,
   }) async {
-    try {
-      var query = Query(sql,
-          params: params, placeholderIdentifier: placeholderIdentifier);
-      query.state = QueryState.init;
-      query.transactionContext = this;
-      query.error = null;
-      query.isUnamedStatement = isUnamedStatement;
-      query.prepareStatementId = connection.prepareStatementId;
-      connection.prepareStatementId++;
-      query.queryType = QueryType.prepareStatement;
-      _enqueueQuery(query);
-      await query.stream.toList();
-      //cria uma copia
-      // var newQuery = query.clone();
-      // return newQuery;
-      return query;
-    } catch (ex, st) {
-      return Future.error(ex, st);
-    }
+    // try {
+    var query = Query(sql,
+        params: params, placeholderIdentifier: placeholderIdentifier);
+    query.state = QueryState.init;
+    query.transactionContext = this;
+    query.error = null;
+    query.isUnamedStatement = isUnamedStatement;
+    query.prepareStatementId = connection.prepareStatementId;
+    connection.prepareStatementId++;
+    query.queryType = QueryType.prepareStatement;
+    _enqueueQuery(query);
+    await query.stream.toList();
+    //cria uma copia
+    // var newQuery = query.clone();
+    // return newQuery;
+    return query;
+    // } catch (ex, st) {
+    //   return Future.error(ex, st);
+    //}
   }
 
   /// run Query prepared with (prepareStatement) method and return List of Row
-  Future<Results> executeStatement(Query query) {
-    return executeStatementAsStream(query).toResults();
+  Future<Results> executeStatement(Query query) async {
+    var r = await executeStatementAsStream(query);
+    return r.toResults();
   }
 
   /// run Query prepared with (prepareStatement) method and return Stream of Row
-  ResultStream executeStatementAsStream(Query query) {
-    try {
-      //cria uma copia
-      var newQuery = query; //query.clone();
-      newQuery.error = null;
-      newQuery.state = QueryState.init;
-      newQuery.reInitStream();
-      //print('execute_named ');
-      newQuery.queryType = QueryType.namedStatement;
-      _enqueueQuery(newQuery);
-      return newQuery.stream;
-    } catch (ex, st) {
-      return ResultStream.fromFuture(Future.error(ex, st));
-    }
+  Future<ResultStream> executeStatementAsStream(Query query) async {
+    //try {
+    //cria uma copia
+    var newQuery = query; //query.clone();
+    newQuery.error = null;
+    newQuery.state = QueryState.init;
+    newQuery.reInitStream();
+    //print('execute_named ');
+    newQuery.queryType = QueryType.namedStatement;
+    _enqueueQuery(newQuery);
+    return newQuery.stream;
+    //} catch (ex, st) {
+    //  return ResultStream.fromFuture(Future.error(ex, st));
+    // }
   }
 
   /// coloca a query na fila

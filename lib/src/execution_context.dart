@@ -15,7 +15,7 @@ abstract class ExecutionContext {
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  ResultStream querySimpleAsStream(String sql);
+  Future<ResultStream> querySimpleAsStream(String sql);
 
   /// execute a prepared unnamed statement
   /// [params] parameters can be a list or a map,
@@ -47,5 +47,5 @@ abstract class ExecutionContext {
   Future<Results> executeStatement(Query query);
 
   /// run query prepared with (prepareStatement) method
-  ResultStream executeStatementAsStream(Query query);
+  Future<ResultStream> executeStatementAsStream(Query query);
 }

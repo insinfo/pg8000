@@ -25,3 +25,8 @@ queries Example:
 ## 2.2.1
 
 - fix bugs on queryUnnamed and prepareStatement
+
+
+## 2.2.2
+
+- fix bugs on query error and database restart error
