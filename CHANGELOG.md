@@ -24,4 +24,4 @@ queries Example:
 
 ## 2.2.1
 
-- fix bug on queryUnnamed and prepareStatement
+- fix bugs on queryUnnamed and prepareStatement
