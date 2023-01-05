@@ -38,6 +38,6 @@ void example1() async {
       placeholderIdentifier: PlaceholderIdentifier.atSign,
     );
   });
-  var results = await con
+   await con
       .querySimple('SELECT name, varchar_array_type FROM test_arrays limit 1;');
 }

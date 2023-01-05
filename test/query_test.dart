@@ -1,5 +1,5 @@
 import 'package:dargres/dargres.dart';
-import 'package:dargres/src/core.dart';
+//import 'package:dargres/src/core.dart';
 import 'package:test/test.dart';
 
 //dart test .\test\query_test.dart --plain-name "queryUnnamed at Sign @ placeholder" --chain-stack-traces -j 1
@@ -571,7 +571,9 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
       ]);
     });
 
-    test('runInTransaction INSERT with prepareStatement and executeStatement inside query', () async {
+    test(
+        'runInTransaction INSERT with prepareStatement and executeStatement inside query',
+        () async {
       await con.runInTransaction((ctx) async {
         var query = await ctx.prepareStatement(
             r'''INSERT INTO "myschema"."pessoas_cursos" ("idPessoa", "idCurso","name") VALUES ($1, $2 ,$3)''',
@@ -588,7 +590,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
 
     test('runInTransaction queryUnnamed INSERT with @ placeholder', () async {
       await con.runInTransaction((ctx) async {
-         await ctx.queryUnnamed(
+        await ctx.queryUnnamed(
           'INSERT INTO test_arrays (name, varchar_array_type) VALUES (@name, @varchars);',
           {
             'name': 'Vagner',
@@ -597,13 +599,54 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
           placeholderIdentifier: PlaceholderIdentifier.atSign,
         );
       });
-       var results = await con.querySimple(
+      var results = await con.querySimple(
           'SELECT name, varchar_array_type FROM test_arrays limit 1;');
       expect(results, [
         [
           'Vagner',
           ['João', 'Isaque Sant\'Ana']
         ]
+      ]);
+    });
+
+    test('querySimple SELECT/INSERT', () async {
+      await con.querySimple('''
+      CREATE TEMPORARY TABLE temp_location
+      (
+          id int4,
+          city VARCHAR(80),
+          street VARCHAR(80)
+      )
+      ''');
+      final re = await con.querySimple(
+          '''INSERT INTO temp_location (id,city,street) VALUES (1,'Rio das Ostras','Amaral Peixoto') returning id;''');
+      final id = re.first.first;
+
+      final results = await con
+          .querySimple('SELECT * FROM temp_location WHERE id=$id limit 1;');
+
+      expect(results, [
+        [1, 'Rio das Ostras', 'Amaral Peixoto']
+      ]);
+    });
+
+    test('queryUnnamed SELECT/INSERT', () async {
+      await con.querySimple('''
+      CREATE TEMPORARY TABLE temp_location
+      (   id int4,
+          city VARCHAR(80),
+          street VARCHAR(80)
+      )
+      ''');
+      final re = await con.queryUnnamed(
+          r'''INSERT INTO temp_location (id,city,street) VALUES ($1,$2,$3) returning id;''',
+          [2, 'São Paulo', 'José das Coves']);
+      final id = re.first.first;
+
+      var results = await con
+          .queryUnnamed(r'SELECT * FROM temp_location WHERE id=$1 limit 1;',[id]);
+      expect(results, [
+        [2, 'São Paulo', 'José das Coves']
       ]);
     });
 

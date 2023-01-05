@@ -9,7 +9,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'execution_context.dart';
 import 'results.dart';
-import 'row_info.dart';
+
 import 'dependencies/sasl_scram/sasl_scram.dart';
 import 'to_statement.dart';
 import 'utils/utils.dart';

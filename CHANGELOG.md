@@ -21,3 +21,7 @@ queries Example:
 ## 2.2.0
 
 - implemented ResultStream and Results class for return data from queryUnnamed and querySimple
+
+## 2.2.1
+
+- fix bug on queryUnnamed and prepareStatement

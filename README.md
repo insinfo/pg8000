@@ -215,6 +215,81 @@ INSERT INTO test_arrays
 
 ```
 
+## Executing a prepared statement with colon placeholder style
+```dart
+    var con = CoreConnection(
+        'user',
+        database: 'dataBaseTest',
+        host: 'localhost',
+        port: 5432,
+        password: '123456',       
+    );
+
+    await con.connect();
+
+    await ctx.queryUnnamed(
+      'INSERT INTO test_arrays (name, varchar_array_type) VALUES (:name, :varchars);',
+      {
+        'name': 'Vagner',
+        'varchars': ["João", '''Isaque Sant'Ana''']
+      },
+      placeholderIdentifier: PlaceholderIdentifier.colon,
+    );
+    
+    await con.close();
+
+```
+
+## Executing a prepared statement with at sign placeholder style
+```dart
+    var con = CoreConnection(
+        'user',
+        database: 'dataBaseTest',
+        host: 'localhost',
+        port: 5432,
+        password: '123456',       
+    );
+
+    await con.connect();
+
+    await ctx.queryUnnamed(
+      'INSERT INTO test_arrays (name, varchar_array_type) VALUES (@name, @varchars);',
+      {
+        'name': 'Vagner',
+        'varchars': ["João", '''Isaque Sant'Ana''']
+      },
+      placeholderIdentifier: PlaceholderIdentifier.atSign,
+    );
+    
+    await con.close();
+
+```
+
+## Executing a prepared statement with question mark placeholder style
+```dart
+    var con = CoreConnection(
+        'user',
+        database: 'dataBaseTest',
+        host: 'localhost',
+        port: 5432,
+        password: '123456',       
+    );
+
+    await con.connect();
+
+    await ctx.queryUnnamed(
+      'INSERT INTO test_arrays (name, varchar_array_type) VALUES (?, ?);',
+      {
+        'name': 'Vagner',
+        'varchars': ["João", '''Isaque Sant'Ana''']
+      },
+      placeholderIdentifier: PlaceholderIdentifier.onlyQuestionMark,
+    );
+    
+    await con.close();
+
+```
+
 
 ## Notices And Notifications it is ideal that creates a dedicated connection to listen to database notifications
 ```dart
