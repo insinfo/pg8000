@@ -33,4 +33,4 @@ queries Example:
 
 ## 2.2.2
 
-- severe bug fix on buffer  
+- Serious bug fix, which caused error when executing prepared statement with selects that intermittently returned too much data
