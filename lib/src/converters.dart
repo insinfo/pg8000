@@ -386,10 +386,11 @@ class TypeConverter {
 
   dynamic date_in(value) {
     if (value == 'infinity' || value == '-infinity') {
-      throw PostgresqlException(
-        'A timestamp value "$value", cannot be represented '
-        'as a Dart object.',
-      );
+      // throw PostgresqlException(
+      //   'A timestamp value "$value", cannot be represented '
+      //   'as a Dart object.',
+      // );
+      return null;
     }
 
     // var formattedValue = value;
@@ -400,10 +401,11 @@ class TypeConverter {
   /// convert de posgresql timestamp para dart DateTime
   dynamic timestamp_in(value) {
     if (value == 'infinity' || value == '-infinity') {
-      throw PostgresqlException(
-        'A timestamp value "$value", cannot be represented '
-        'as a Dart object.',
-      );
+      // throw PostgresqlException(
+      //   'A timestamp value "$value", cannot be represented '
+      //   'as a Dart object.',
+      // );
+      return null;
     }
     //var pattern =  value.contain('.') ? "%Y-%m-%d %H:%M:%S.%f" : "%Y-%m-%d %H:%M:%S";
     var formattedValue = value;
@@ -416,7 +418,7 @@ class TypeConverter {
   /// Note: it will convert it to local time (via [DateTime.toLocal])
   ///
   /// TODO use https://github.com/AKushWarrior/instant/tree/master/lib/src
-  DateTime timestamptz_in(value) {
+  dynamic timestamptz_in(value) {
     // print('timestamptz_in $value ${serverInfo.timeZone}');
 // Built in Dart dates can either be local time or utc. Which means that the
     // the postgresql timezone parameter for the connection must be either set
@@ -425,10 +427,11 @@ class TypeConverter {
     // capable of creating DateTimes for a non-local time zone.
 
     if (value == 'infinity' || value == '-infinity') {
-      throw PostgresqlException(
-        'A timestamp value "$value", cannot be represented '
-        'as a Dart object.',
-      );
+      // throw PostgresqlException(
+      //   'A timestamp value "$value", cannot be represented '
+      //   'as a Dart object.',
+      // );
+      return null;
     }
     //if infinity values are required, rewrite the sql query to cast
     //the value to a string, i.e. your_column::text.

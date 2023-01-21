@@ -32,7 +32,7 @@ class QueryType {
   final String value;
   const QueryType(this.value);
   static const QueryType prepareStatement = const QueryType('prepareStatement');
-  static const QueryType namedStatement = const QueryType('namedStatement');
+  static const QueryType execStatement = const QueryType('execStatement');
   static const QueryType simple = const QueryType('simple');
 
   @override
@@ -66,9 +66,13 @@ class Query {
   }
 
   /// generate unique name for named prepared Statement
-  String get statementName => isUnamedStatement == false
-      ? '$prepareStatementId'.padLeft(12, '0')
-      : ''; //dargres_statement_$prepareStatementId
+  String get statementName {
+    //pdo_stmt_00000004
+    //return isUnamedStatement == false  ? '$prepareStatementId'.padLeft(12, '0') : '';
+    return isUnamedStatement == false
+        ? 'dargres_stmt_' + '$prepareStatementId'.padLeft(8, '0')
+        : '';
+  } //dargres_statement_$prepareStatementId
 
   QueryState state = QueryState.queued;
 
@@ -180,8 +184,7 @@ class Query {
         prepareStatementId: prepareStatementId,
         params: preparedParams,
         oidsP: oids,
-        connection: connection
-        //input_funcs: this.input_funcs,
+        connection: connection       
         );
     newQuery.queryType = queryType;
     newQuery.columnCount = columnCount;
@@ -195,7 +198,7 @@ class Query {
   }
 
   void addPreparedParams(dynamic params, [List? oidsP]) {
-     _formatSql(params);
+    _formatSql(params);
     if (oidsP != null) {
       _oids = oidsP;
     }

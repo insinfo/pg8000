@@ -9,12 +9,17 @@ class Buffer {
   int _bytesRead = 0;
   int get bytesRead => _bytesRead;
 
+  /// total bytes Available
+  int length = 0;
+
   int get bytesAvailable =>
       _queue.fold<int>(0, (len, buffer) => len + buffer.length) - _position;
 
   int readByte() {
-    if (_queue.isEmpty)
-      throw Exception("Attempted to read from an empty buffer.");
+    if (_queue.isEmpty) {      
+      throw Exception("Attempted to read from an empty buffer.");      
+    }
+
     int byte = _queue.first[_position];
     _position++;
     if (_position >= _queue.first.length) {
@@ -22,6 +27,7 @@ class Buffer {
       _position = 0;
     }
     _bytesRead++;
+    length--;
     return byte;
   }
 
@@ -41,7 +47,7 @@ class Buffer {
     int a = readByte();
     int b = readByte();
     int c = readByte();
-    int d = readByte();
+    int d = readByte();  
 
     assert(a < 256 &&
         b < 256 &&
@@ -61,7 +67,10 @@ class Buffer {
 
   List<int> readBytes(int bytes) {
     final list = <int>[];
-    while (--bytes >= 0) list.add(readByte());
+    var count = bytes;   
+    while (--count >= 0) {
+      list.add(readByte());
+    }
     return list;
   }
 
@@ -88,7 +97,7 @@ class Buffer {
 
   void append(List<int> data) {
     if (data.isEmpty) throw new Exception("Attempted to append empty list.");
-
     _queue.addLast(data);
+    length += data.length;
   }
 }

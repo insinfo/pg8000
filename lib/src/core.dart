@@ -2,11 +2,13 @@
 
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'dependencies/buffer_isoos/buffer.dart';
 import 'execution_context.dart';
 import 'results.dart';
 
@@ -122,7 +124,7 @@ class CoreConnection implements ExecutionContext {
 
   TransactionState transactionState = TransactionState.unknown;
 
-  late Buffer _buffer;
+  //late Buffer _buffer;
   // backend_key_data
   int backendPid = 0;
 
@@ -151,7 +153,7 @@ class CoreConnection implements ExecutionContext {
     this.isUnixSocket = false,
     this.sslContext,
     this.connectionTimeout = const Duration(seconds: 180),
-    this.tcpKeepalive = true,
+    this.tcpKeepalive = false,
     this.applicationName,
     this.replication = null,
     this.connectionName,
@@ -220,7 +222,7 @@ class CoreConnection implements ExecutionContext {
       }
     }
 
-    _buffer = Buffer();
+    //_buffer = Buffer();
 
     this.userBytes = _initParams['user'];
 
@@ -243,7 +245,7 @@ class CoreConnection implements ExecutionContext {
 
   Future<CoreConnection> connect({int? delayBeforeConnect}) async {
     _connectionState = ConnectionState.socketConnecting;
-    // print('Connecting...');
+
     if (delayBeforeConnect != null) {
       await Future.delayed(Duration(seconds: delayBeforeConnect));
     }
@@ -254,9 +256,9 @@ class CoreConnection implements ExecutionContext {
         // remover waitFor no futuro
         _socket = await Socket.connect(host, port).timeout(connectionTimeout);
 
-        if (tcpKeepalive == true) {
-          _setKeepAlive();
-        }
+        // if (tcpKeepalive == true) {
+        //   _setKeepAlive();
+        // }
       } catch (e) {
         //tenta se reconectar
         if (_tryReconnectCount <= tryReconnectLimit &&
@@ -290,13 +292,10 @@ class CoreConnection implements ExecutionContext {
         onError: _handleSocketError, onDone: _handleSocketClosed);
     _sendStartupMessage();
 
-    //print('Connected');
-
     return _connected.future;
   }
 
   Future<SecureSocket> _connectSsl() async {
-    //print('_connectSsl');
     var future = Socket.connect(host, port, timeout: connectionTimeout);
     var completer = Completer<SecureSocket>();
 
@@ -385,13 +384,12 @@ class CoreConnection implements ExecutionContext {
     PlaceholderIdentifier placeholderIdentifier =
         PlaceholderIdentifier.pgDefault,
   }) async {
-    //try {
     var statement = await prepareStatement(sql, params,
-        isUnamedStatement: true, placeholderIdentifier: placeholderIdentifier);
-    return await executeStatement(statement);
-    //} catch (ex, st) {
-    //   return Future.error(ex, st);
-    // }
+        isUnamedStatement: false, placeholderIdentifier: placeholderIdentifier);
+    var result = await executeStatement(statement);
+    //TODO check this
+    // await execute('DEALLOCATE ${statement.statementName}');
+    return result;
   }
 
   /// prepare statement
@@ -409,7 +407,6 @@ class CoreConnection implements ExecutionContext {
     PlaceholderIdentifier placeholderIdentifier =
         PlaceholderIdentifier.pgDefault,
   }) async {
-    //try {
     var query = Query(sql,
         params: params, placeholderIdentifier: placeholderIdentifier);
     query.state = QueryState.init;
@@ -420,17 +417,8 @@ class CoreConnection implements ExecutionContext {
     prepareStatementId++;
     query.queryType = QueryType.prepareStatement;
     await _enqueueQuery(query);
-    //print('core@prepareStatement before');
     await query.stream.isEmpty;
-    // print('core@prepareStatement after');
-    //cria uma copia
-    // var newQuery = query.clone();
-    // return newQuery;
     return query;
-    // } catch (ex, st) {
-    //   print('core@prepareStatement error');
-    //   return Future.error(ex, st);
-    // }
   }
 
   /// run prepared query with (prepareStatement) method and return List of Row
@@ -447,8 +435,7 @@ class CoreConnection implements ExecutionContext {
     newQuery.error = null;
     newQuery.state = QueryState.init;
     newQuery.reInitStream();
-    //print('execute_named ');
-    newQuery.queryType = QueryType.namedStatement;
+    newQuery.queryType = QueryType.execStatement;
     await _enqueueQuery(newQuery);
     return newQuery.stream;
     // } catch (ex, st) {
@@ -602,9 +589,9 @@ class CoreConnection implements ExecutionContext {
     if (query.queryType == QueryType.simple) {
       _sendExecuteSimpleStatement(query);
     } else if (query.queryType == QueryType.prepareStatement) {
-      await _sendPreparedStatement(query);
-    } else if (query.queryType == QueryType.namedStatement) {
-      await _sendExecuteNamedStatement(query);
+      _sendPreparedStatement(query);
+    } else if (query.queryType == QueryType.execStatement) {
+      _sendExecuteStatement(query);
     }
     _connectionState = ConnectionState.busy;
     query.state = QueryState.busy;
@@ -612,62 +599,57 @@ class CoreConnection implements ExecutionContext {
     //print('_processSendQueryQueue: ${query.sql}');
   }
 
-  Future<dynamic> _sendExecuteSimpleStatement(Query query) async {
-    // execute_simple
-    // print('send execute_simple ');
+  dynamic _sendExecuteSimpleStatement(Query query) {  
     _send_message(QUERY,
         [...typeConverter.charsetEncode(query.getSql, textCharset), NULL_BYTE]);
-    await this._sock_flush();
+    this._sock_flush();
   }
 
-  Future<dynamic> _sendPreparedStatement(Query query) async {
-    //print('send prepare_statement');
+  dynamic _sendPreparedStatement(Query query) {
+   
     final statementNameBytes = [
       ...typeConverter.charsetEncode(query.statementName, defaultCodeCharset),
       NULL_BYTE
-    ];
-    _send_PARSE(statementNameBytes, query.getSql, query.oids);
-    _send_DESCRIBE_STATEMENT(statementNameBytes);
+    ];    
+    _send_PARSE(statementNameBytes, query.getSql, query.oids);    
+    _send_DESCRIBE_STATEMENT(statementNameBytes);   
     this._sock_write(SYNC_MSG);
-    await this._sock_flush();
+    this._sock_flush();
   }
 
-  Future<dynamic> _sendExecuteNamedStatement(Query query) async {
-    //print('_sendExecuteNamedStatement:');
-    //print('_sendExecuteNamedStatement antes params: ${query.preparedParams}');
+  Future<dynamic> _sendExecuteStatement(Query query) async {    
     var params = typeConverter.makeParams(query.preparedParams);
     final statementNameBytes = [
       ...typeConverter.charsetEncode(query.statementName, defaultCodeCharset),
       NULL_BYTE
-    ];
-    // print('_sendExecuteNamedStatement params: $params');
-    this._send_BIND(statementNameBytes, params);
-    this._send_EXECUTE();
+    ];   
+    this._send_BIND(statementNameBytes, params);   
+    this._send_EXECUTE();   
     this._sock_write(SYNC_MSG);
-    await this._sock_flush();
+    this._sock_flush();
   }
 
-  Future<dynamic> _sock_flush() {
+  dynamic _sock_flush() {
     try {
-      return this._socket.flush();
+      this._socket.flush();
     } catch (e) {
       throw PostgresqlException("_sock_flush network error $e",
           connectionName: connectionName);
     }
   }
 
-  /// grava dados no Socket
+  /// write data to Socket
   void _sock_write(List<int> data) {
     try {
-      return this._socket.add(data);
+      this._socket.add(data);
     } catch (e, s) {
       throw PostgresqlException("_sock_write network error $e $s",
           connectionName: connectionName);
     }
   }
 
-  Future<void> _sendStartupMessage() async {
-    //print('CoreConnection@_sendStartupMessage');
+  void _sendStartupMessage() {
+   
     // Int32 - Message length, including self.
     // Int32(196608) - Protocol version number.  Version 3.0.
     // Any number of key/value pairs, terminated by a zero byte:
@@ -689,68 +671,134 @@ class CoreConnection implements ExecutionContext {
 
     this._sock_write(i_pack(Utils.len(val) + 4));
     this._sock_write(val);
-    await _sock_flush();
+    _sock_flush();
     _connectionState = ConnectionState.authenticating;
   }
 
+  var _buffer = Buffer();
+  int? _msgType;
+  int? _msgLength;
+
   /// ler dados do Socket
   /// loop
-  void _readData(List<int> socketData) async {
-    if (_connectionState == ConnectionState.closed) {
-      return;
-    }
-    _buffer.append(socketData);
-
-    while (_connectionState != ConnectionState.closed) {
-      if (_buffer.bytesAvailable < 5) return; // Wait for more data.
-
-      int msgType = _buffer.readByte();
-      int length = _buffer.readInt32() - 4;
-
-      //print('_readData code: ${pgCodeString(msgType)} $msgType');
-      final messageBytes = _buffer.readBytes(length);
-
-      switch (msgType) {
-        case NOTICE_RESPONSE:
-          _handle_NOTICE_RESPONSE(messageBytes);
-          break;
-        case AUTHENTICATION_REQUEST:
-          await _handle_AUTHENTICATION_REQUEST(messageBytes);
-          break;
-        case PARAMETER_STATUS:
-          _handle_PARAMETER_STATUS(messageBytes);
-          break;
-        case BACKEND_KEY_DATA:
-          _handle_BACKEND_KEY_DATA(messageBytes);
-          break;
-        case READY_FOR_QUERY:
-          _handle_READY_FOR_QUERY(messageBytes);
-          break;
-        case ERROR_RESPONSE:
-          _handle_ERROR_RESPONSE(messageBytes);
-          break;
-        case ROW_DESCRIPTION:
-          _handle_ROW_DESCRIPTION(messageBytes);
-          break;
-        case DATA_ROW:
-          _handle_DATA_ROW(messageBytes);
-          break;
-        case COMMAND_COMPLETE:
-          _handle_COMMAND_COMPLETE(messageBytes);
-          break;
-        case PARSE_COMPLETE:
-          _handle_PARSE_COMPLETE(messageBytes);
-          break;
-        case BIND_COMPLETE:
-          _handle_BIND_COMPLETE(messageBytes);
-          break;
-        case PARAMETER_DESCRIPTION:
-          _handle_PARAMETER_DESCRIPTION(messageBytes);
-          break;
-        case NOTIFICATION_RESPONSE:
-          _handle_NOTIFICATION_RESPONSE(messageBytes);
-          break;
+  void _readData(List<int> data) {
+    try {
+      if (_connectionState == ConnectionState.closed) {
+        return;
       }
+      _buffer.append(data);
+
+      // Handle resuming after storing message type and length.
+      final msgType = _msgType;
+      if (msgType != null) {
+        final msgLength = _msgLength!;
+        if (msgLength > _buffer.bytesAvailable)
+          return; // Wait for entire message to be in buffer.
+
+        _readMessage(msgType, msgLength);
+
+        _msgType = null;
+        _msgLength = null;
+      }
+
+      // Main message loop.
+      while (_connectionState != ConnectionState.closed) {
+        if (_buffer.bytesAvailable < 5) return; // Wait for more data.
+
+        // Message length is the message length excluding the message type code, but
+        // including the 4 bytes for the length fields. Only the length of the body
+        // is passed to each of the message handlers.
+        int msgType = _buffer.readByte();
+        int length = _buffer.readInt32() - 4;
+
+        if (!_checkMessageLength(msgType, length + 4)) {
+          throw new PostgresqlException('Lost message sync.',
+              connectionName: connectionName);
+        }
+
+        if (length > _buffer.bytesAvailable) {
+          // Wait for entire message to be in buffer.
+          // Store type, and length for when more data becomes available.
+          _msgType = msgType;
+          _msgLength = length;
+          return;
+        }
+
+        _readMessage(msgType, length);
+      }
+    } catch (_) {
+      _destroy();
+      rethrow;
+    }
+  }
+
+  bool _checkMessageLength(int msgType, int msgLength) {
+    if (_connectionState == ConnectionState.authenticating) {
+      if (msgLength < 8) return false;
+      if (msgType == AUTHENTICATION_REQUEST && msgLength > 2000) return false;
+      if (msgType == ERROR_RESPONSE && msgLength > 30000) return false;
+    } else {
+      if (msgLength < 4) return false;
+
+      // These are the only messages from the server which may exceed 30,000
+      // bytes.
+      if (msgLength > 30000 &&
+          (msgType != NOTICE_RESPONSE &&
+              msgType != ERROR_RESPONSE &&
+              msgType != COPY_DATA &&
+              msgType != ROW_DESCRIPTION &&
+              msgType != DATA_ROW &&
+              msgType != FUNCTION_CALL_RESPONSE &&
+              msgType != NOTIFICATION_RESPONSE)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _readMessage(int msgType, int length) {
+    //assert(_buffer.bytesAvailable >= length);
+    final messageBytes = _buffer.readBytes(length);
+    switch (msgType) {
+      case NOTICE_RESPONSE:
+        _handle_NOTICE_RESPONSE(messageBytes);
+        break;
+      case AUTHENTICATION_REQUEST:
+        _handle_AUTHENTICATION_REQUEST(messageBytes);
+        break;
+      case PARAMETER_STATUS:
+        _handle_PARAMETER_STATUS(messageBytes);
+        break;
+      case BACKEND_KEY_DATA:
+        _handle_BACKEND_KEY_DATA(messageBytes);
+        break;
+      case READY_FOR_QUERY:
+        _handle_READY_FOR_QUERY(messageBytes);
+        break;
+      case ERROR_RESPONSE:
+        _handle_ERROR_RESPONSE(messageBytes);
+        break;
+      case ROW_DESCRIPTION:
+        _handle_ROW_DESCRIPTION(messageBytes);
+        break;
+      case DATA_ROW:
+        _handle_DATA_ROW(messageBytes);
+        break;
+      case COMMAND_COMPLETE:
+        _handle_COMMAND_COMPLETE(messageBytes);
+        break;
+      case PARSE_COMPLETE:
+        _handle_PARSE_COMPLETE(messageBytes);
+        break;
+      case BIND_COMPLETE:
+        _handle_BIND_COMPLETE(messageBytes);
+        break;
+      case PARAMETER_DESCRIPTION:
+        _handle_PARAMETER_DESCRIPTION(messageBytes);
+        break;
+      case NOTIFICATION_RESPONSE:
+        _handle_NOTIFICATION_RESPONSE(messageBytes);
+        break;
     }
   }
 
@@ -1046,7 +1094,7 @@ class CoreConnection implements ExecutionContext {
         {'backendPid': backend_pid, 'channel': channel, 'payload': payload});
   }
 
-  Future<void> _handle_AUTHENTICATION_REQUEST(List<int> data) async {
+  void _handle_AUTHENTICATION_REQUEST(List<int> data) {
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
     //print('handle_AUTHENTICATION_REQUEST');
 
@@ -1068,7 +1116,7 @@ class CoreConnection implements ExecutionContext {
             'server requesting cleartext password authentication, but no password was provided',
             connectionName: connectionName);
       this._send_message(PASSWORD, [...this.passwordBytes, NULL_BYTE]);
-      await this._sock_flush();
+      this._sock_flush();
     }
     //md5 AUTHENTICATION
     else if (authenticationRequestType ==
@@ -1093,7 +1141,7 @@ class CoreConnection implements ExecutionContext {
       ];
 
       this._send_message(PASSWORD, [...pwd, NULL_BYTE]);
-      await this._sock_flush();
+      this._sock_flush();
     }
     // AuthenticationSASL
     else if (authenticationRequestType == AuthenticationRequestType.SASL) {
@@ -1368,7 +1416,7 @@ class CoreConnection implements ExecutionContext {
     //send _MSG_TERMINATE
     try {
       _sock_write(TERMINATE_MSG);
-      await _sock_flush();
+      _sock_flush();
     } catch (e, st) {
       _notices.add(ClientNotice(
           severity: 'WARNING',

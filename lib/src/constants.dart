@@ -25,6 +25,7 @@ const int COPY_DATA = 100; //b"d"
 const int COPY_IN_RESPONSE = 71; // b"G"
 const int COPY_OUT_RESPONSE = 72; // b"H"
 const int EMPTY_QUERY_RESPONSE = 73; // b"I"
+const int FUNCTION_CALL_RESPONSE = 86;
 
 String pgCodeString(int pgCode) {
   switch (pgCode) {

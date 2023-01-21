@@ -124,7 +124,7 @@ class TransactionContext implements ExecutionContext {
     newQuery.state = QueryState.init;
     newQuery.reInitStream();
     //print('execute_named ');
-    newQuery.queryType = QueryType.namedStatement;
+    newQuery.queryType = QueryType.execStatement;
     _enqueueQuery(newQuery);
     return newQuery.stream;
     //} catch (ex, st) {
