@@ -25,7 +25,8 @@ abstract class ExecutionContext {
   /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
   Future<Results> queryUnnamed(String sql, dynamic params,
       {PlaceholderIdentifier placeholderIdentifier =
-          PlaceholderIdentifier.pgDefault});
+          PlaceholderIdentifier.pgDefault,
+      bool isDeallocate = false});
 
   /// prepare statement
   /// [params] parameters can be a list or a map,
@@ -35,16 +36,13 @@ abstract class ExecutionContext {
   /// Example:
   /// var statement = await prepareStatement('SELECT * FROM table LIMIT $1', [0]);
   /// var result await executeStatement(statement);
-  Future<Query> prepareStatement(
-    String sql,
-    dynamic params, {
-    bool isUnamedStatement = false,
-    PlaceholderIdentifier placeholderIdentifier =
-        PlaceholderIdentifier.pgDefault,
-  });
+  Future<Query> prepareStatement(String sql, dynamic params,
+      {bool isUnamedStatement = false,
+      PlaceholderIdentifier placeholderIdentifier = PlaceholderIdentifier.pgDefault
+      });
 
   /// run prepared query with (prepareStatement) method and return List of Row
-  Future<Results> executeStatement(Query query);
+  Future<Results> executeStatement(Query query,{bool isDeallocate = false});
 
   /// run query prepared with (prepareStatement) method
   Future<ResultStream> executeStatementAsStream(Query query);

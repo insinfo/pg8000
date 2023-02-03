@@ -58,16 +58,14 @@ class TransactionContext implements ExecutionContext {
   /// it has to be a List, if different it has to be a Map
   /// return Query prepared with statementName for execute with (executeStatement) method
   /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
-  Future<Results> queryUnnamed(
-    String sql,
-    dynamic params, {
-    PlaceholderIdentifier placeholderIdentifier =
-        PlaceholderIdentifier.pgDefault,
-  }) async {
+  Future<Results> queryUnnamed(String sql, dynamic params,
+      {PlaceholderIdentifier placeholderIdentifier =
+          PlaceholderIdentifier.pgDefault,
+      bool isDeallocate = false}) async {
     // try {
     var statement = await prepareStatement(sql, params,
         isUnamedStatement: true, placeholderIdentifier: placeholderIdentifier);
-    return executeStatement(statement);
+    return executeStatement(statement, isDeallocate: isDeallocate);
     // } catch (ex, st) {
     //   return Future.error(ex, st);
     // }
@@ -110,9 +108,15 @@ class TransactionContext implements ExecutionContext {
   }
 
   /// run Query prepared with (prepareStatement) method and return List of Row
-  Future<Results> executeStatement(Query query) async {
-    var r = await executeStatementAsStream(query);
-    return r.toResults();
+  Future<Results> executeStatement(Query query,
+      {bool isDeallocate = false}) async {
+    var stm = await executeStatementAsStream(query);
+    var result = await stm.toResults();
+    //TODO check this
+    if (isDeallocate == true) {
+      await execute('DEALLOCATE ${query.statementName}');
+    }
+    return result;
   }
 
   /// run Query prepared with (prepareStatement) method and return Stream of Row

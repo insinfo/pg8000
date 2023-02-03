@@ -24,18 +24,18 @@ I'm only able to do this implementation thanks to several open source projects, 
 ### Currently supports:
 
 #### Authentication:
-- [x] CleartextPassword
-- [x] MD5Password
+- [x] Cleartext Password
+- [x] MD5 Password
 - [x] SASL SCRAM-SHA-256
 
 #### Connection:
 - [x] No SSL
 - [x] With SSL
 
-#### query statement:
-- [x] simple 
-- [x] unnamed prepared statement
-- [x] named prepared statement 
+#### Query statement:
+- [x] Simple 
+- [x] Unnamed prepared statement
+- [x] Named prepared statement 
 
 #### Transaction:
 - [x] PHP PDO style

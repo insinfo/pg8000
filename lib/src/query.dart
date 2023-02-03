@@ -54,11 +54,12 @@ class Query {
 
   CoreConnection? connection;
 
-  Future<Results> executeStatement() {
+  Future<Results> executeStatement({bool isDeallocate = false}) {
     if (_transactionContext != null) {
-      return _transactionContext!.executeStatement(this);
+      return _transactionContext!
+          .executeStatement(this, isDeallocate: isDeallocate);
     } else if (connection != null) {
-      return connection!.executeStatement(this);
+      return connection!.executeStatement(this, isDeallocate: isDeallocate);
     } else {
       throw PostgresqlException(
           'no connection or transactionContext for execute statement');
@@ -184,8 +185,7 @@ class Query {
         prepareStatementId: prepareStatementId,
         params: preparedParams,
         oidsP: oids,
-        connection: connection       
-        );
+        connection: connection);
     newQuery.queryType = queryType;
     newQuery.columnCount = columnCount;
     newQuery.rowCount = rowCount;

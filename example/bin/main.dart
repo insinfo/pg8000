@@ -22,7 +22,7 @@ void main(List<String> args) async {
 
   await con.connect();
 
-  Timer.periodic(Duration(seconds: 2), (timer) async {
+  Timer.periodic(Duration(milliseconds: 100), (timer) async {
     var anoExercicio = '2019';
     var numcgm = 0;
 

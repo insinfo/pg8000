@@ -395,7 +395,7 @@ class TypeConverter {
 
     // var formattedValue = value;
     // formattedValue = formattedValue + 'T00:00:00Z';
-    return DateTime.parse(value);
+    return DateTime.tryParse(value);
   }
 
   /// convert de posgresql timestamp para dart DateTime

@@ -14,6 +14,7 @@ class PlaceholderIdentifier {
 
   /// The question mark ? (also known as interrogation point)
   /// Example: "SELECT * FROM book WHERE title = ? AND code = ?"
+  /// Note: You cannot enclose the question mark in quotation marks. incorrect '?' => correct ??
   static const PlaceholderIdentifier onlyQuestionMark =
       const PlaceholderIdentifier('?');
 

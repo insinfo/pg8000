@@ -31,6 +31,6 @@ queries Example:
 
 - fix bugs on query error and database restart error
 
-## 2.2.2
+## 2.2.3
 
-- Serious bug fix, which caused error when executing prepared statement with selects that intermittently returned too much data
+- Serious bug fix that caused intermittent error when executing prepared statement with selects that return too much data

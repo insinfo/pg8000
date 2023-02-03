@@ -373,22 +373,19 @@ class CoreConnection implements ExecutionContext {
   }
 
   /// execute a prepared unnamed statement
+  /// [isDeallocate] = if isDeallocate == true execute DEALLOCATE command on end of query execution
   /// [params] parameters can be a list or a map,
   /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
   /// it has to be a List, if different it has to be a Map
   /// return Query prepared with statementName for execute with (executeStatement) method
   /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
-  Future<Results> queryUnnamed(
-    String sql,
-    dynamic params, {
-    PlaceholderIdentifier placeholderIdentifier =
-        PlaceholderIdentifier.pgDefault,
-  }) async {
+  Future<Results> queryUnnamed(String sql, dynamic params,
+      {PlaceholderIdentifier placeholderIdentifier =
+          PlaceholderIdentifier.pgDefault,
+      bool isDeallocate = false}) async {
     var statement = await prepareStatement(sql, params,
         isUnamedStatement: false, placeholderIdentifier: placeholderIdentifier);
-    var result = await executeStatement(statement);
-    //TODO check this
-    // await execute('DEALLOCATE ${statement.statementName}');
+    var result = await executeStatement(statement, isDeallocate: isDeallocate);
     return result;
   }
 
@@ -409,6 +406,7 @@ class CoreConnection implements ExecutionContext {
   }) async {
     var query = Query(sql,
         params: params, placeholderIdentifier: placeholderIdentifier);
+        
     query.state = QueryState.init;
     query.connection = this;
     query.error = null;
@@ -422,9 +420,16 @@ class CoreConnection implements ExecutionContext {
   }
 
   /// run prepared query with (prepareStatement) method and return List of Row
-  Future<Results> executeStatement(Query query) async {
-    var r = await executeStatementAsStream(query);
-    return r.toResults();
+  Future<Results> executeStatement(Query query,
+      {bool isDeallocate = false}) async {
+    var stm = await executeStatementAsStream(query);
+    var result = stm.toResults();
+
+    //TODO check this
+    if (isDeallocate == true) {
+      await execute('DEALLOCATE ${query.statementName}');
+    }
+    return result;
   }
 
   /// run Query prepared with (prepareStatement) method
@@ -599,32 +604,31 @@ class CoreConnection implements ExecutionContext {
     //print('_processSendQueryQueue: ${query.sql}');
   }
 
-  dynamic _sendExecuteSimpleStatement(Query query) {  
+  dynamic _sendExecuteSimpleStatement(Query query) {
     _send_message(QUERY,
         [...typeConverter.charsetEncode(query.getSql, textCharset), NULL_BYTE]);
     this._sock_flush();
   }
 
   dynamic _sendPreparedStatement(Query query) {
-   
     final statementNameBytes = [
       ...typeConverter.charsetEncode(query.statementName, defaultCodeCharset),
       NULL_BYTE
-    ];    
-    _send_PARSE(statementNameBytes, query.getSql, query.oids);    
-    _send_DESCRIBE_STATEMENT(statementNameBytes);   
+    ];
+    _send_PARSE(statementNameBytes, query.getSql, query.oids);
+    _send_DESCRIBE_STATEMENT(statementNameBytes);
     this._sock_write(SYNC_MSG);
     this._sock_flush();
   }
 
-  Future<dynamic> _sendExecuteStatement(Query query) async {    
+  Future<dynamic> _sendExecuteStatement(Query query) async {
     var params = typeConverter.makeParams(query.preparedParams);
     final statementNameBytes = [
       ...typeConverter.charsetEncode(query.statementName, defaultCodeCharset),
       NULL_BYTE
-    ];   
-    this._send_BIND(statementNameBytes, params);   
-    this._send_EXECUTE();   
+    ];
+    this._send_BIND(statementNameBytes, params);
+    this._send_EXECUTE();
     this._sock_write(SYNC_MSG);
     this._sock_flush();
   }
@@ -649,7 +653,6 @@ class CoreConnection implements ExecutionContext {
   }
 
   void _sendStartupMessage() {
-   
     // Int32 - Message length, including self.
     // Int32(196608) - Protocol version number.  Version 3.0.
     // Any number of key/value pairs, terminated by a zero byte:
@@ -1278,8 +1281,10 @@ class CoreConnection implements ExecutionContext {
     var msg = closed ? 'Socket closed unexpectedly.' : 'Socket error.';
 
     if (!hasConnected) {
-      _connected.completeError(PostgresqlException(msg,
-          errorCode: error, connectionName: connectionName));
+      PostgresqlException(msg,
+          errorCode: error, connectionName: connectionName);
+      // _connected.completeError(PostgresqlException(msg,
+      //     errorCode: error, connectionName: connectionName));
     } else {
       final query = _query;
       if (query != null) {
