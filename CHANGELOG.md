@@ -34,3 +34,8 @@ queries Example:
 ## 2.2.3
 
 - Serious bug fix that caused intermittent error when executing prepared statement with selects that return too much data
+
+## 2.2.4
+
+- add 'win1252' Windows CP1250 support to CoreConnection 
+- Example: var con = CoreConnection('user', database: 'db', host: 'localhost', port: 5432, password: 'pass', textCharset: 'win1252');

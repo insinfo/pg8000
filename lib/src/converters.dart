@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:convert/convert.dart';
+import 'package:enough_convert/enough_convert.dart';
 
 import 'dependencies/charcode/ascii.dart';
 import 'exceptions.dart';
@@ -485,7 +486,11 @@ class TypeConverter {
       buf.write(encodeValueDefault(v));
     }
     buf.write(']');
-    if (pgType != null) buf..write('::')..write(pgType)..write('[]');
+    if (pgType != null)
+      buf
+        ..write('::')
+        ..write(pgType)
+        ..write('[]');
     return buf.toString();
   }
 
@@ -550,10 +555,10 @@ class TypeConverter {
 
   /// convert from dart types to posgresql types
   /// based in python pg8000
-  // TODO implement ip4_address type and money 
+  // TODO implement ip4_address type and money
   // https://github.com/dart-protocol/ip/tree/master/lib/src/ip
   // https://pub.dev/packages/money
-  encodeValuePg8000(dynamic value, Type type) {     
+  encodeValuePg8000(dynamic value, Type type) {
     if (value is DateTime) {
       return datetime_out(value);
     } else if (value is bool) {
@@ -574,12 +579,12 @@ class TypeConverter {
       return value.toString();
     } else if (value is num) {
       return numeric_out(value);
-    } else if (value is Iterable) {    
-      //TODO checar isso  
+    } else if (value is Iterable) {
+      //TODO checar isso
       return array_out(value as List);
-    } else if (value is List<Object>) {      
+    } else if (value is List<Object>) {
       return array_out(value);
-    }else{
+    } else {
       return value.toString();
     }
     //Iterable<int>
@@ -587,7 +592,7 @@ class TypeConverter {
   }
 
   /// convert from dart types to posgresql types
-  /// based on tomyeh implementation  
+  /// based on tomyeh implementation
   // based on https://github.com/tomyeh/postgresql
   encodeValueTomyeh(dynamic value, String? type) {
     if (type == null) return encodeValueDefault(value);
@@ -702,12 +707,12 @@ class TypeConverter {
         return date_in(value); // date
       case DATE_ARRAY:
         return date_array_in(value); // date[]
-       
+
       case FLOAT:
         return float_in(value); // _FLOAT8 _FLOAT4 701
       case FLOAT_ARRAY:
         return float_array_in(value); // float8[]
-       
+
       case INET:
         // return inet_in(value); // inet
         return value;
@@ -722,12 +727,12 @@ class TypeConverter {
         return json_in(value); // json
       case JSON_ARRAY:
         return json_array_in(value); // json[]
-        
+
       case JSONB:
         return json_in(value); // jsonb
       case JSONB_ARRAY:
         return json_array_in(value); // jsonb[]
-       
+
       case MACADDR:
         return string_in(value); // MACADDR type
       case MONEY:
@@ -1033,7 +1038,7 @@ class TypeConverter {
   /// convert prepared params from dart types to posgresql types
   List makeParams(List values) {
     var results = [];
-    for (var v in values) {      
+    for (var v in values) {
       results.add(makeParam(v));
     }
     return results;
@@ -1102,8 +1107,11 @@ class TypeConverter {
         return ascii.decode(codeUnits);
       case 'latin1':
         return latin1.decode(codeUnits);
-      case 'iso-8859–1':
+      case 'iso-8859-1':
         return latin1.decode(codeUnits);
+      case 'win1252':
+        //WIN1250	Windows CP1250 | cp1252
+        return Windows1252Codec(allowInvalid: false).decode(codeUnits);
       default:
         return utf8.decode(codeUnits, allowMalformed: true);
     }
@@ -1117,8 +1125,11 @@ class TypeConverter {
         return ascii.encode(codeUnits);
       case 'latin1':
         return latin1.encode(codeUnits);
-      case 'iso-8859–1':
+      case 'iso-8859-1':
         return latin1.encode(codeUnits);
+      case 'win1252':
+        //WIN1250	Windows CP1250 | cp1252
+        return Windows1252Codec(allowInvalid: false).encode(codeUnits);
       default:
         return utf8.encode(codeUnits);
     }
