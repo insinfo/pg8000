@@ -27,24 +27,45 @@ class ConnectionSettings {
   String? applicationName;
   dynamic replication;
   String? connectionName;
+  /// Allow reconnection attempt if PostgreSQL was restarted
   bool allowAttemptToReconnect = false;
   ConnectionSettings({
     required this.user,
     this.host = 'localhost',
-     this.database,
+    this.database,
     this.port = 5432,
-     this.password,
+    this.password,
     this.sourceAddress = '',
     this.isUnixSocket = false,
     this.sslContext,
     this.connectionTimeout = const Duration(seconds: 180),
-    this.tcpKeepalive = true,
+    this.tcpKeepalive = false,
     this.applicationName,
     this.replication = null,
     this.connectionName = null,
     this.textCharset = 'utf8',
     this.allowAttemptToReconnect = false,
   });
+
+  ConnectionSettings clone() {
+    return ConnectionSettings(
+      user: user,
+      host: host,
+      database: database,
+      port: port,
+      password: password,
+      sourceAddress: sourceAddress,
+      isUnixSocket: isUnixSocket,
+      sslContext: sslContext,
+      connectionTimeout: connectionTimeout,
+      tcpKeepalive: tcpKeepalive,
+      applicationName: applicationName,
+      replication: replication,
+      connectionName: connectionName,
+      textCharset: textCharset,
+      allowAttemptToReconnect: allowAttemptToReconnect,
+    );
+  }
 
   /// create Connection Settings from URI String
   /// Example:  var uri = 'postgres://postgres:s1sadm1n@localhost:5432/sistemas';

@@ -410,8 +410,8 @@ class TypeConverter {
     }
     //var pattern =  value.contain('.') ? "%Y-%m-%d %H:%M:%S.%f" : "%Y-%m-%d %H:%M:%S";
     var formattedValue = value;
-
-    return DateTime.parse(formattedValue);
+    //print('timestamp_in value: $value');
+    return DateTime.tryParse(formattedValue);
   }
 
   /// Decodes [value] into a [DateTime] instance.
@@ -441,7 +441,7 @@ class TypeConverter {
     // PG will return the timestamp in the connection's timezone. The resulting DateTime.parse will handle accordingly.
 
     //var pattern = value.contain('.') ? "%Y-%m-%d %H:%M:%S.%f%z" : "%Y-%m-%d %H:%M:%S%z";
-    return DateTime.parse(formattedValue);
+    return DateTime.tryParse(formattedValue);
   }
 
   dynamic interval_in(value) {

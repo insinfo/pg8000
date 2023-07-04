@@ -1,10 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
 import 'package:dargres/dargres.dart';
-import 'package:dargres/src/core.dart';
-import 'execution_context.dart';
-import 'query.dart';
-import 'to_statement.dart';
 
 class TransactionContext implements ExecutionContext {
   final int transactionId;
@@ -15,15 +11,29 @@ class TransactionContext implements ExecutionContext {
 
   TransactionContext(this.transactionId, this.connection);
 
+  Future<void> commit({Duration? timeout = CoreConnection.defaultTimeout}) async {
+    await connection.commit(this, timeout: timeout);
+  }
+
+  Future<void> rollBack(
+      {Duration? timeout =  CoreConnection.defaultTimeout}) async {
+    await connection.rollBack(this, timeout: timeout);
+  }
+
   /// Execute a sql command e return affected row count
   /// Example: con.execute('select * from crud_teste.pessoas limit 1')
-  Future<int> execute(String sql) async {
+  Future<int> execute(String sql,
+      {Duration? timeout =  CoreConnection.defaultTimeout}) async {
     //try {
     var query = Query(sql);
     query.state = QueryState.init;
     query.queryType = QueryType.simple;
     _enqueueQuery(query);
-    await query.stream.toList();
+    if (timeout != null) {
+      await query.stream.toList().timeout(timeout);
+    } else {
+      await query.stream.toList();
+    }
     return query.rowsAffected.value;
     //} catch (ex, st) {
     //   return Future.error(ex, st);
@@ -33,9 +43,14 @@ class TransactionContext implements ExecutionContext {
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Future<Results> querySimple(String sql) async {
-    var r = await querySimpleAsStream(sql);
-    return r.toResults();
+  Future<Results> querySimple(String sql,
+      {Duration? timeout =  CoreConnection.defaultTimeout}) async {
+    var streamResp = await querySimpleAsStream(sql);
+
+    if (timeout != null) {
+      return streamResp.toResults().timeout(timeout);
+    }
+    return streamResp.toResults();
   }
 
   /// execute a simple query whitout prepared statement
@@ -61,14 +76,55 @@ class TransactionContext implements ExecutionContext {
   Future<Results> queryUnnamed(String sql, dynamic params,
       {PlaceholderIdentifier placeholderIdentifier =
           PlaceholderIdentifier.pgDefault,
-      bool isDeallocate = false}) async {
-    // try {
-    var statement = await prepareStatement(sql, params,
-        isUnamedStatement: true, placeholderIdentifier: placeholderIdentifier);
-    return executeStatement(statement, isDeallocate: isDeallocate);
-    // } catch (ex, st) {
-    //   return Future.error(ex, st);
-    // }
+      bool isDeallocate = false,
+      Duration? timeout =  CoreConnection.defaultTimeout}) async {
+    if (timeout != null) {
+      var statement = await prepareStatement(sql, params,
+              isUnamedStatement: true,
+              placeholderIdentifier: placeholderIdentifier)
+          .timeout(timeout);
+
+      var result = await executeStatement(statement, isDeallocate: isDeallocate)
+          .timeout(timeout);
+      return result;
+    } else {
+      var statement = await prepareStatement(sql, params,
+          isUnamedStatement: true,
+          placeholderIdentifier: placeholderIdentifier);
+      var result =
+          await executeStatement(statement, isDeallocate: isDeallocate);
+      return result;
+    }
+  }
+
+  /// execute a prepared named statement
+  /// [params] parameters can be a list or a map,
+  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
+  /// it has to be a List, if different it has to be a Map
+  /// return Query prepared with statementName for execute with (executeStatement) method
+  /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
+  Future<Results> queryNamed(String sql, dynamic params,
+      {PlaceholderIdentifier placeholderIdentifier =
+          PlaceholderIdentifier.pgDefault,
+      bool isDeallocate = false,
+      Duration? timeout =  CoreConnection.defaultTimeout}) async {
+    if (timeout != null) {
+      var statement = await prepareStatement(sql, params,
+          isUnamedStatement: false,
+          placeholderIdentifier: placeholderIdentifier,
+          timeout: timeout);
+
+      var result = await executeStatement(statement,
+          isDeallocate: isDeallocate, timeout: timeout);
+      return result;
+    } else {
+      var statement = await prepareStatement(sql, params,
+          isUnamedStatement: false,
+          placeholderIdentifier: placeholderIdentifier);
+      var result =
+          await executeStatement(statement, isDeallocate: isDeallocate);
+      return result;
+    }
   }
 
   /// prepare statement
@@ -79,13 +135,11 @@ class TransactionContext implements ExecutionContext {
   /// Example:
   /// var statement = await prepareStatement('SELECT * FROM table LIMIT $1', [0]);
   /// var result await executeStatement(statement);
-  Future<Query> prepareStatement(
-    String sql,
-    dynamic params, {
-    bool isUnamedStatement = false,
-    PlaceholderIdentifier placeholderIdentifier =
-        PlaceholderIdentifier.pgDefault,
-  }) async {
+  Future<Query> prepareStatement(String sql, dynamic params,
+      {bool isUnamedStatement = false,
+      PlaceholderIdentifier placeholderIdentifier =
+          PlaceholderIdentifier.pgDefault,
+      Duration? timeout =  CoreConnection.defaultTimeout}) async {
     // try {
     var query = Query(sql,
         params: params, placeholderIdentifier: placeholderIdentifier);
@@ -97,7 +151,13 @@ class TransactionContext implements ExecutionContext {
     connection.prepareStatementId++;
     query.queryType = QueryType.prepareStatement;
     _enqueueQuery(query);
-    await query.stream.toList();
+
+    if (timeout != null) {
+      await query.stream.toList().timeout(timeout);
+    } else {
+      await query.stream.toList();
+    }
+
     //cria uma copia
     // var newQuery = query.clone();
     // return newQuery;
@@ -109,14 +169,23 @@ class TransactionContext implements ExecutionContext {
 
   /// run Query prepared with (prepareStatement) method and return List of Row
   Future<Results> executeStatement(Query query,
-      {bool isDeallocate = false}) async {
-    var stm = await executeStatementAsStream(query);
-    var result = await stm.toResults();
-    //TODO check this
-    if (isDeallocate == true) {
-      await execute('DEALLOCATE ${query.statementName}');
+      {bool isDeallocate = false,
+      Duration? timeout =  CoreConnection.defaultTimeout}) async {
+    if (timeout != null) {
+      var stm = await executeStatementAsStream(query).timeout(timeout);
+      var result = stm.toResults().timeout(timeout);
+      if (isDeallocate == true) {
+        await execute('DEALLOCATE ${query.statementName}', timeout: timeout);
+      }
+      return result;
+    } else {
+      var stm = await executeStatementAsStream(query);
+      var result = stm.toResults();
+      if (isDeallocate == true) {
+        await execute('DEALLOCATE ${query.statementName}');
+      }
+      return result;
     }
-    return result;
   }
 
   /// run Query prepared with (prepareStatement) method and return Stream of Row
@@ -140,5 +209,18 @@ class TransactionContext implements ExecutionContext {
   void _enqueueQuery(Query query) {
     query.state = QueryState.queued;
     sendQueryQueue.addLast(query);
+  }
+  
+  @override
+  Future<T> runInTransaction<T>(Future<T> Function(TransactionContext ctx) operation, {
+    Duration? timeout,
+    Duration? timeoutInner,
+  }) {    
+    throw UnimplementedError();
+  }
+  
+  @override
+  Future<CoreConnection> connect({int? delayBeforeConnect, int? delayAfterConnect}) { 
+    throw UnimplementedError();
   }
 }

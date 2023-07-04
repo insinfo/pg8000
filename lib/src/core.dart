@@ -2,13 +2,12 @@
 
 import 'dart:async';
 import 'dart:collection';
-import 'dart:convert';
 
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'dependencies/buffer_isoos/buffer.dart';
+
 import 'execution_context.dart';
 import 'results.dart';
 
@@ -67,7 +66,7 @@ class CoreConnection implements ExecutionContext {
   //dynamic _xid;
   //Set _statement_nums;
 
-  late Socket _socket;
+  Socket? _socket;
   //client_encoding
   //String clientEncoding = 'utf8';
 
@@ -75,6 +74,9 @@ class CoreConnection implements ExecutionContext {
   String textCharset = 'utf8'; //utf8
 
   late TypeConverter typeConverter;
+
+   /// default query Timeout =  300 seconds
+  static const defaultTimeout = const Duration(seconds: 300);
 
   // var _commands_with_count = [
   //   "INSERT".codeUnits,
@@ -86,10 +88,10 @@ class CoreConnection implements ExecutionContext {
   //   "SELECT".codeUnits,
   // ];
 
-  final _notifications = StreamController<dynamic>.broadcast();
+  StreamController _notifications = StreamController<dynamic>.broadcast();
   Stream<dynamic> get notifications => _notifications.stream;
 
-  final _notices = StreamController<dynamic>.broadcast();
+  StreamController _notices = StreamController<dynamic>.broadcast();
   Stream<dynamic> get notices => _notices.stream;
 
   //Map<String, dynamic> serverParameters = <String, dynamic>{};
@@ -103,9 +105,6 @@ class CoreConnection implements ExecutionContext {
 
   ServerNotice? lastServerNotice;
 
-  //Future<dynamic> Function() _flush;
-  //void Function(List<int> d) _write;
-
   ///  Int32(196608) - Protocol version number.  Version 3.0.
   int protocol = 196608;
 
@@ -115,12 +114,17 @@ class CoreConnection implements ExecutionContext {
 
   ConnectionState _connectionState = ConnectionState.notConnected;
 
+  /// connection  is Closed
+  bool get isClosed =>
+      _connectionState == ConnectionState.closed ||
+      _connectionState == ConnectionState.notConnected;
+
   ConnectionState get connectionState => _connectionState;
 
   /// experimental: allow reconnection attempt in case of posgresql server restart
   bool allowAttemptToReconnect = false;
   int _tryReconnectCount = 0;
-  int tryReconnectLimit = 5;
+  int tryReconnectLimit = 20;
 
   TransactionState transactionState = TransactionState.unknown;
 
@@ -130,14 +134,21 @@ class CoreConnection implements ExecutionContext {
 
   bool hasConnected = false;
   // queue of queries to be executed
-  final Queue<Query> _sendQueryQueue = Queue<Query>();
+  Queue<Query> _sendQueryQueue = Queue<Query>();
+
+  /// size of Query Queue
+  int get queryQueueSize => _sendQueryQueue.length;
   Query? _query;
 
   int prepareStatementId = 0;
   //int _transactionLevel = 0;
 
   // transaction queue to be executed
-  final _transactionQueue = Queue<TransactionContext>();
+  Queue<TransactionContext> _transactionQueue = Queue<TransactionContext>();
+
+  /// size of Query Queue
+  int get transactionQueueSize => _transactionQueue.length;
+
   TransactionContext? _currentTransaction;
   int _transactionId = 0;
 
@@ -203,7 +214,6 @@ class CoreConnection implements ExecutionContext {
     if (connectionName == null) {
       connectionName = 'dargres_$connectionId';
     }
-    connectionId++;
 
     _initParams = <String, dynamic>{
       "user": user,
@@ -232,6 +242,7 @@ class CoreConnection implements ExecutionContext {
   }
 
   void _setKeepAlive() {
+    //print('CoreConnection@_setKeepAlive start');
     RawSocketOption option;
     if (Platform.isAndroid || Platform.isLinux) {
       option =
@@ -240,10 +251,29 @@ class CoreConnection implements ExecutionContext {
       option = RawSocketOption.fromBool(
           WINDOWS_SOL_SOCKET, WINDOWS_SO_KEEPALIVE, true);
     }
-    _socket.setRawOption(option);
+    _socket?.setRawOption(option);
   }
 
-  Future<CoreConnection> connect({int? delayBeforeConnect}) async {
+  /// [delayBeforeConnect] in seconds
+  Future<CoreConnection> connect(
+      {int? delayBeforeConnect, int? delayAfterConnect}) async {
+    //print('CoreConnection@connect start');
+    // reset all
+    hasConnected = false;
+    _sendQueryQueue = Queue<Query>();
+    _query = null;
+    prepareStatementId = 0;
+    _transactionQueue = Queue<TransactionContext>();
+    _currentTransaction = null;
+    _transactionId = 0;
+    transactionState = TransactionState.unknown;
+    _transaction_status = null;
+    _notifications = StreamController<dynamic>.broadcast();
+    _notices = StreamController<dynamic>.broadcast();
+    lastServerNotice = null;
+    scramAuthenticator = null;
+    // reset all
+
     _connectionState = ConnectionState.socketConnecting;
 
     if (delayBeforeConnect != null) {
@@ -253,23 +283,24 @@ class CoreConnection implements ExecutionContext {
     _connected = Completer<CoreConnection>();
     if (isUnixSocket == false && host != null) {
       try {
-        // remover waitFor no futuro
         _socket = await Socket.connect(host, port).timeout(connectionTimeout);
-
-        // if (tcpKeepalive == true) {
-        //   _setKeepAlive();
-        // }
       } catch (e) {
+        _connectionState = ConnectionState.closed;
         //tenta se reconectar
-        if (_tryReconnectCount <= tryReconnectLimit &&
-            allowAttemptToReconnect == true) {
-          await tryReconnect();
-        } else {
-          throw PostgresqlException(
-              """Can't create a connection to host $host and port $port 
-                    (timeout is: $connectionTimeout and sourceAddress is: $sourceAddress).""",
-              connectionName: connectionName);
-        }
+        // if (_tryReconnectCount <= tryReconnectLimit &&
+        //     allowAttemptToReconnect == true) {
+        //   tryReconnect();
+        // } else {
+        //   throw PostgresqlException(
+        //       """Can't create a connection to host $host and port $port
+        //             (timeout is: $connectionTimeout and sourceAddress is: $sourceAddress).""",
+        //       connectionName: connectionName);
+        // }
+        //print('Can\'t create a connection to host');
+        throw PostgresqlException(
+            """Can't create a connection to host $host and port $port 
+                     (timeout is: $connectionTimeout and sourceAddress is: $sourceAddress).""",
+            connectionName: connectionName);
       }
     } else if (isUnixSocket == true) {
       //throw UnimplementedError('unix_sock not implemented');
@@ -277,6 +308,8 @@ class CoreConnection implements ExecutionContext {
               InternetAddress(host!, type: InternetAddressType.unix), port)
           .timeout(connectionTimeout);
     } else {
+      //print('one of host or unix_sock must be provided');
+      _connectionState = ConnectionState.closed;
       throw PostgresqlException('one of host or unix_sock must be provided',
           connectionName: connectionName);
     }
@@ -285,13 +318,23 @@ class CoreConnection implements ExecutionContext {
       _socket = await _connectSsl();
     }
 
-    _connectionState = ConnectionState.socketConnected;
-    _tryReconnectCount = 0;
+    if (tcpKeepalive == true) {
+      _setKeepAlive();
+    }
 
-    this._socket.listen(_readData,
+    _connectionState = ConnectionState.socketConnected;
+
+    _tryReconnectCount = 0;
+    connectionId++;
+
+    this._socket?.listen(_readData,
         onError: _handleSocketError, onDone: _handleSocketClosed);
     _sendStartupMessage();
 
+    if (delayAfterConnect != null) {
+      await Future.delayed(Duration(seconds: delayAfterConnect));
+    }
+   // print('CoreConnection@connect _socket conected');
     return _connected.future;
   }
 
@@ -331,13 +374,19 @@ class CoreConnection implements ExecutionContext {
 
   /// Execute a sql command e return affected row count
   /// Example: con.execute('DROP SCHEMA IF EXISTS myschema CASCADE;')
-  Future<int> execute(String sql) async {
+  Future<int> execute(String sql, {Duration? timeout}) async {
     try {
       var query = Query(sql);
       query.state = QueryState.init;
       query.queryType = QueryType.simple;
       await _enqueueQuery(query);
-      await query.stream.toList();
+
+      if (timeout != null) {
+        await query.stream.toList().timeout(timeout);
+      } else {
+        await query.stream.toList();
+      }
+
       return query.rowsAffected.value;
     } catch (ex, st) {
       return Future.error(ex, st);
@@ -347,19 +396,25 @@ class CoreConnection implements ExecutionContext {
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Future<Results> querySimple(String sql) async {
-    var r = await querySimpleAsStream(sql);
-    return r.toResults();
+  Future<Results> querySimple(String sql, {Duration? timeout}) async {
+    //print('CoreConnection@querySimple start');
+    var streamResp = await querySimpleAsStream(sql);
+    if (timeout != null) {
+      return streamResp.toResults().timeout(timeout);
+    }
+    return streamResp.toResults();
   }
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
   Future<ResultStream> querySimpleAsStream(String sql) async {
+    //print('CoreConnection@querySimpleAsStream start');
     // try {
     // if (params != null) {
     //   statement = substitute(statement, params, typeConverter.encodeValue);
     // }
+
     var query = Query(sql);
     query.state = QueryState.init;
     query.queryType = QueryType.simple;
@@ -382,11 +437,56 @@ class CoreConnection implements ExecutionContext {
   Future<Results> queryUnnamed(String sql, dynamic params,
       {PlaceholderIdentifier placeholderIdentifier =
           PlaceholderIdentifier.pgDefault,
-      bool isDeallocate = false}) async {
-    var statement = await prepareStatement(sql, params,
-        isUnamedStatement: false, placeholderIdentifier: placeholderIdentifier);
-    var result = await executeStatement(statement, isDeallocate: isDeallocate);
-    return result;
+      bool isDeallocate = false,
+      Duration? timeout}) async {
+    //print('CoreConnection@queryUnnamed start');
+    if (timeout != null) {
+      var statement = await prepareStatement(sql, params,
+          isUnamedStatement: true,
+          placeholderIdentifier: placeholderIdentifier,
+          timeout: timeout);
+
+      var result = await executeStatement(statement,
+          isDeallocate: isDeallocate, timeout: timeout);
+      return result;
+    } else {
+      var statement = await prepareStatement(sql, params,
+          isUnamedStatement: true,
+          placeholderIdentifier: placeholderIdentifier);
+      var result =
+          await executeStatement(statement, isDeallocate: isDeallocate);
+      return result;
+    }
+  }
+
+  /// execute a prepared named statement
+  /// [params] parameters can be a list or a map,
+  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
+  /// it has to be a List, if different it has to be a Map
+  /// return Query prepared with statementName for execute with (executeStatement) method
+  /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
+  Future<Results> queryNamed(String sql, dynamic params,
+      {PlaceholderIdentifier placeholderIdentifier =
+          PlaceholderIdentifier.pgDefault,
+      bool isDeallocate = false,
+      Duration? timeout}) async {
+    if (timeout != null) {
+      var statement = await prepareStatement(sql, params,
+              isUnamedStatement: false,
+              placeholderIdentifier: placeholderIdentifier)
+          .timeout(timeout);
+
+      var result = await executeStatement(statement, isDeallocate: isDeallocate)
+          .timeout(timeout);
+      return result;
+    } else {
+      var statement = await prepareStatement(sql, params,
+          isUnamedStatement: false,
+          placeholderIdentifier: placeholderIdentifier);
+      var result =
+          await executeStatement(statement, isDeallocate: isDeallocate);
+      return result;
+    }
   }
 
   /// prepare statement
@@ -403,10 +503,12 @@ class CoreConnection implements ExecutionContext {
     bool isUnamedStatement = false,
     PlaceholderIdentifier placeholderIdentifier =
         PlaceholderIdentifier.pgDefault,
+    Duration? timeout,
   }) async {
+    //print('CoreConnection@prepareStatement start');
     var query = Query(sql,
         params: params, placeholderIdentifier: placeholderIdentifier);
-        
+
     query.state = QueryState.init;
     query.connection = this;
     query.error = null;
@@ -415,25 +517,40 @@ class CoreConnection implements ExecutionContext {
     prepareStatementId++;
     query.queryType = QueryType.prepareStatement;
     await _enqueueQuery(query);
-    await query.stream.isEmpty;
+
+    if (timeout != null) {
+      await query.stream.toList().timeout(timeout);
+    } else {
+      await query.stream.toList();
+    }
+
     return query;
   }
 
   /// run prepared query with (prepareStatement) method and return List of Row
   Future<Results> executeStatement(Query query,
-      {bool isDeallocate = false}) async {
-    var stm = await executeStatementAsStream(query);
-    var result = stm.toResults();
-
-    //TODO check this
-    if (isDeallocate == true) {
-      await execute('DEALLOCATE ${query.statementName}');
+      {bool isDeallocate = false, Duration? timeout}) async {
+    //print('CoreConnection@executeStatement start');
+    if (timeout != null) {
+      var stm = await executeStatementAsStream(query).timeout(timeout);
+      var result = stm.toResults().timeout(timeout);
+      if (isDeallocate == true) {
+        await execute('DEALLOCATE ${query.statementName}', timeout: timeout);
+      }
+      return result;
+    } else {
+      var stm = await executeStatementAsStream(query);
+      var result = stm.toResults();
+      if (isDeallocate == true) {
+        await execute('DEALLOCATE ${query.statementName}');
+      }
+      return result;
     }
-    return result;
   }
 
   /// run Query prepared with (prepareStatement) method
   Future<ResultStream> executeStatementAsStream(Query query) async {
+    //print('CoreConnection@executeStatementAsStream start');
     //try {
     //cria uma copia
     var newQuery = query; //query.clone();
@@ -448,49 +565,70 @@ class CoreConnection implements ExecutionContext {
     //}
   }
 
-  Future<TransactionContext> beginTransaction() async {
+  Future<TransactionContext> beginTransaction({Duration? timeout}) async {
     var transaction = TransactionContext(_transactionId, this);
+   // print('CoreConnection@beginTransaction start');
     //'START TRANSACTION'
     final commandBegin = 'BEGIN';
-    _enqueueTransaction(transaction);
-    await transaction.execute(commandBegin);
+    await _enqueueTransaction(transaction);
+    await transaction.execute(commandBegin, timeout: timeout);
     _transactionId++;
     return transaction;
   }
 
-  Future<void> rollBack(TransactionContext transaction) async {
-    await transaction.execute('ROLLBACK');
+  Future<void> rollBack(TransactionContext transaction,
+      {Duration? timeout}) async {
+    //print('CoreConnection@rollBack start');
+    await transaction.execute('ROLLBACK', timeout: timeout);
     //if (transaction == _currentTransaction)
     //print('rollBack id ${_currentTransaction?.transactionId}');
     _currentTransaction = null;
     //print('rollBack $_currentTransaction');
   }
 
-  Future<void> commit(TransactionContext transaction) async {
-    await transaction.execute('COMMIT');
+  Future<void> commit(TransactionContext transaction,
+      {Duration? timeout}) async {
+    //print('CoreConnection@commit start');
+    await transaction.execute('COMMIT', timeout: timeout);
     // if (transaction == _currentTransaction)
     //print('commit id ${_currentTransaction?.transactionId}');
     _currentTransaction = null;
     // print('commit $_currentTransaction');
   }
 
+  /// execute querys in transaction
   Future<T> runInTransaction<T>(
-      Future<T> operation(TransactionContext ctx)) async {
+    Future<T> operation(TransactionContext ctx), {
+    Duration? timeout,
+    Duration? timeoutInner,
+  }) async {
+    //print('CoreConnection@runInTransaction start');
     final transa = await beginTransaction();
     //print('runInTransaction Id:${transa.transactionId}');
     try {
-      final result = await operation(transa);
-      await commit(transa);
+      var result;
+      if (timeoutInner != null) {
+        result = await operation(transa).timeout(timeoutInner);
+      } else {
+        result = await operation(transa);
+      }
+      await commit(transa, timeout: timeout);
       return result;
     } catch (e) {
       //print('runInTransaction catch (_)');
       //print('runInTransaction  $e $s');
-      await rollBack(transa);
+      await rollBack(transa, timeout: timeout);
       rethrow;
     }
   }
 
   Future<void> _enqueueTransaction(TransactionContext transaction) async {
+    //print('CoreConnection@_enqueueTransaction start');
+    if (_connectionState == ConnectionState.notConnected) {
+      throw PostgresqlException(
+          'Connection is notConnected, cannot execute query.',
+          errorCode: 501);
+    }
     if (_connectionState == ConnectionState.closed) {
       if (_tryReconnectCount <= tryReconnectLimit &&
           allowAttemptToReconnect == true) {
@@ -506,10 +644,17 @@ class CoreConnection implements ExecutionContext {
     }
     // print('_enqueueTransaction id: ${transaction.transactionId}');
     _transactionQueue.addLast(transaction);
+
+    if (_connectionState == ConnectionState.socketConnecting) {
+      // print('_enqueueTransaction: aguarda Reconnect pois esta fazendo conexão agora');
+      await waitReconnect();
+    }
+
     Timer.run(_processTransactionQueue);
   }
 
   void _processTransactionQueue() async {
+    //print('CoreConnection@_processTransactionQueue start');
     if (_transactionQueue.isEmpty) {
       //print('_processTransactionQueue _transactionQueue.isEmpty');
       return;
@@ -529,10 +674,17 @@ class CoreConnection implements ExecutionContext {
 
   /// coloca a query na fila
   Future<void> _enqueueQuery(Query query) async {
+    //print(  'CoreConnection@_enqueueQuery start _connectionState ${_connectionState}');
+
+    if (_connectionState == ConnectionState.notConnected) {
+      throw PostgresqlException(
+          'Connection is notConnected, cannot execute query.',
+          errorCode: 501);
+    }
     if (_connectionState == ConnectionState.closed) {
-      //tenta se reconectar
       if (_tryReconnectCount <= tryReconnectLimit &&
           allowAttemptToReconnect == true) {
+       // print('_enqueueQuery tenta se reconectar ');
         await tryReconnect();
       } else {
         throw PostgresqlException('Connection is closed, cannot execute query.',
@@ -542,50 +694,90 @@ class CoreConnection implements ExecutionContext {
             serverErrorCode: lastServerNotice?.code);
       }
     }
+
     //print('_enqueueQuery add Query ');
     query.state = QueryState.queued;
     _sendQueryQueue.addLast(query);
+
+    if (_connectionState == ConnectionState.socketConnecting) {
+      //print('CoreConnection@_enqueueQuery: aguarda Reconnect pois esta fazendo conexão agora');
+      await waitReconnect();
+    }
+
     Timer.run(_processSendQueryQueue);
   }
 
+  Future<void> waitReconnect() async {
+    //print('CoreConnection@waitReconnect start');
+    var completer = Completer();
+    Timer.periodic(Duration(milliseconds: 900), (timer) async {
+     // print('waitReconnect: aguardando reconectar');
+      if (_connectionState != ConnectionState.socketConnecting) {
+        // print('waitReconnect: _connectionState ${_connectionState}');
+        timer.cancel();
+        completer.complete();
+      }
+    });
+    await completer.future;
+  }
+
+  ///
   Future<void> tryReconnect() async {
+    //print('tryReconnect inicio: _connectionState ${_connectionState}');
+    await close();
+    await Future.delayed(Duration(seconds: 1));
+    // if (_connectionState == ConnectionState.clossing) {
+    //   print(
+    //       'tryReconnect: não tenta reconectar esta fechando conexão agora');
+    //   return;
+    // }
     if (_connectionState == ConnectionState.socketConnecting) {
-      //print( 'tryReconnect: não tenta reconectar pois esta fazendo conexão agora');
+    //  print( 'tryReconnect: não tenta reconectar pois esta fazendo conexão agora');
+      //return await waitReconnect();
       return;
     }
-    if (_tryReconnectCount > tryReconnectLimit) {
-      //print('tryReconnect: limit excedido');
+    if (_connectionState == ConnectionState.authenticating) {
+     // print( 'tryReconnect: não tenta reconectar pois esta authenticating agora');
       return;
     }
 
+    if (_tryReconnectCount > tryReconnectLimit) {
+      //print('tryReconnect: limit excedido');
+      //return;
+      throw PostgresqlException(
+          'Connection is notConnected,reconnection limit exceeded, cannot execute query.',
+          errorCode: 501);
+    }
+
     _tryReconnectCount++;
-    // tryReconnectLimit
-    //print('tryReconnect: tentando se reconectar ');
-    await connect(delayBeforeConnect: 1);
+
+    await connect();
+
+    //print('tryReconnect fim: _connectionState ${_connectionState}');
   }
 
   /// processa a fila
   void _processSendQueryQueue() async {
+   // print( 'CoreConnection@_processSendQueryQueue _connectionState: $_connectionState}');
     var queryQueue = _sendQueryQueue;
     if (_currentTransaction != null) {
-      //print('_processSendQueryQueue in transaction');
+    //  print('CoreConnection@_processSendQueryQueue in transaction');
       queryQueue = _currentTransaction!.sendQueryQueue;
     }
 
     if (queryQueue.isEmpty) {
-      //print('_processSendQueryQueue query queue empty');
+     // print('CoreConnection@_processSendQueryQueue query queue empty');
       return;
     }
     if (_query != null) {
-      //print('_processSendQueryQueue _query != null');
+     // print('CoreConnection@_processSendQueryQueue _query != null');
       return;
     }
     if (_connectionState != ConnectionState.idle) {
-      //print('_processSendQueryQueue state != ConnectionState.idle');
+     // print(  'CoreConnection@_processSendQueryQueue state != ConnectionState.idle');
       return;
     }
 
-    //print('_processSendQueryQueue _connectionState: $_connectionState}');
     //assert(_connectionState == ConnectionState.idle);
     _query = queryQueue.removeFirst();
     final query = _query!;
@@ -605,6 +797,7 @@ class CoreConnection implements ExecutionContext {
   }
 
   dynamic _sendExecuteSimpleStatement(Query query) {
+  //  print('CoreConnection@_sendExecuteSimpleStatement start');
     _send_message(QUERY,
         [...typeConverter.charsetEncode(query.getSql, textCharset), NULL_BYTE]);
     this._sock_flush();
@@ -633,11 +826,11 @@ class CoreConnection implements ExecutionContext {
     this._sock_flush();
   }
 
-  dynamic _sock_flush() {
+  Future<dynamic> _sock_flush() async {
     try {
-      this._socket.flush();
+      return await _socket?.flush();
     } catch (e) {
-      throw PostgresqlException("_sock_flush network error $e",
+      throw PostgresqlException('_sock_flush network error $e',
           connectionName: connectionName);
     }
   }
@@ -645,9 +838,9 @@ class CoreConnection implements ExecutionContext {
   /// write data to Socket
   void _sock_write(List<int> data) {
     try {
-      this._socket.add(data);
+      this._socket?.add(data);
     } catch (e, s) {
-      throw PostgresqlException("_sock_write network error $e $s",
+      throw PostgresqlException('_sock_write network error $e $s',
           connectionName: connectionName);
     }
   }
@@ -685,6 +878,7 @@ class CoreConnection implements ExecutionContext {
   /// ler dados do Socket
   /// loop
   void _readData(List<int> data) {
+    //print('CoreConnection@_readData');
     try {
       if (_connectionState == ConnectionState.closed) {
         return;
@@ -736,6 +930,8 @@ class CoreConnection implements ExecutionContext {
   }
 
   bool _checkMessageLength(int msgType, int msgLength) {
+    //print('CoreConnection@_checkMessageLength');
+
     if (_connectionState == ConnectionState.authenticating) {
       if (msgLength < 8) return false;
       if (msgType == AUTHENTICATION_REQUEST && msgLength > 2000) return false;
@@ -760,6 +956,7 @@ class CoreConnection implements ExecutionContext {
   }
 
   void _readMessage(int msgType, int length) {
+    //print('CoreConnection@_readMessage');
     //assert(_buffer.bytesAvailable >= length);
     final messageBytes = _buffer.readBytes(length);
     switch (msgType) {
@@ -830,7 +1027,7 @@ class CoreConnection implements ExecutionContext {
   }
 
   void _handle_READY_FOR_QUERY(List<int> data) {
-    // print('handle_READY_FOR_QUERY');
+   // print('CoreConnection@_handle_READY_FOR_QUERY');
     this._transaction_status = data;
     int c = c_unpack(data)[0];
 
@@ -864,21 +1061,6 @@ class CoreConnection implements ExecutionContext {
         }
         query.close();
         _query = null;
-        //fix async call
-        // if (query.queryType == QueryType.prepareStatement) {
-        //   if (query.error != null) {
-        //     query.state = QueryState.done;
-        //   }
-        // }
-        // if (query.state == QueryState.done) {
-        //   query.close();
-        //   _query = null;
-        // }
-        // if (query.state == QueryState.error) {
-        //   query.addStreamError(query.error!, query.stackTrace);
-        //   _query = null;
-        //   print('handle_READY_FOR_QUERY throw');
-        // }
       }
 
       Timer.run(_processSendQueryQueue);
@@ -891,7 +1073,7 @@ class CoreConnection implements ExecutionContext {
   }
 
   void _handle_ROW_DESCRIPTION(List<int> data) {
-    //print('handle_ROW_DESCRIPTION ');
+   // print('CoreConnection@_handle_ROW_DESCRIPTION start ');
     _connectionState = ConnectionState.streaming;
     var count = h_unpack(data)[0];
     var idx = 2;
@@ -980,8 +1162,7 @@ class CoreConnection implements ExecutionContext {
       //
       //sql = context.statement.split()[0].rstrip(";").upper()
       //if (query.sql != "ROLLBACK") {
-      print('in failed transaction block');
-
+     // print('in failed transaction block');
       //}
     }
 
@@ -1055,17 +1236,20 @@ class CoreConnection implements ExecutionContext {
   /// envia mensagem para o postgreSql
   /// ou seja grava uma mensgame no Socket
   void _send_message(int code, List<int> bytes) {
+    //print('CoreConnection@_send_message start');
     try {
       this._sock_write([code]);
       this._sock_write(i_pack(Utils.len(bytes) + 4));
       this._sock_write(bytes);
     } catch (e) {
-      throw PostgresqlException("_send_message connection is closed $e",
+      throw PostgresqlException('_send_message connection is closed $e',
           connectionName: connectionName);
     }
   }
 
   void _handle_NOTICE_RESPONSE(List<int> data) {
+    //print('CoreConnection@_handle_NOTICE_RESPONSE start');
+
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
     //this.notices.add({s[0:1]: s[1:] for s in data.split(NULL_BYTE)});
     var dataSplit = Utils.splitList(data, NULL_BYTE);
@@ -1083,6 +1267,7 @@ class CoreConnection implements ExecutionContext {
   }
 
   void _handle_NOTIFICATION_RESPONSE(List<int> data) {
+    //print('CoreConnection@_handle_NOTIFICATION_RESPONSE start');
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
     //print('_handle_NOTIFICATION_RESPONSE');
     var backend_pid = i_unpack(data)[0];
@@ -1098,6 +1283,7 @@ class CoreConnection implements ExecutionContext {
   }
 
   void _handle_AUTHENTICATION_REQUEST(List<int> data) {
+   // print('CoreConnection@_handle_AUTHENTICATION_REQUEST start');
     //https://www.postgresql.org/docs/current/protocol-message-formats.html
     //print('handle_AUTHENTICATION_REQUEST');
 
@@ -1216,7 +1402,8 @@ class CoreConnection implements ExecutionContext {
 
   /// obtem as informações do servidor
   void _handle_PARAMETER_STATUS(List<int> data) {
-    //print('handle_PARAMETER_STATUS');
+    //print('CoreConnection@_handle_PARAMETER_STATUS start');
+
     var pos = data.indexOf(NULL_BYTE);
     var key =
         typeConverter.charsetDecode(data.sublist(0, pos), defaultCodeCharset);
@@ -1228,8 +1415,12 @@ class CoreConnection implements ExecutionContext {
       var msg =
           '''client_encoding parameter must remain as UTF8 for correct string
           handling. client_encoding is: "$value".''';
-      _notices.add(ClientNotice(
-          severity: 'WARNING', message: msg, connectionName: connectionName));
+      if (_notices.isClosed == false) {
+        _notices.add(ClientNotice(
+            severity: 'WARNING', message: msg, connectionName: connectionName));
+      } else {
+        //print('_handle_PARAMETER_STATUS _notices.isClosed');
+      }
     }
 
     switch (key.toLowerCase()) {
@@ -1265,7 +1456,7 @@ class CoreConnection implements ExecutionContext {
   }
 
   void _handleSocketError(dynamic error, {bool closed = false}) {
-    //print('_handleSocketError $error');
+   // print('CoreConnection@_handleSocketError start _connectionState: $_connectionState $hasConnected');
 
     if (_connectionState == ConnectionState.closed) {
       _notices.add(ClientNotice(
@@ -1277,11 +1468,12 @@ class CoreConnection implements ExecutionContext {
       _destroy();
       return;
     }
+
     _destroy();
     var msg = closed ? 'Socket closed unexpectedly.' : 'Socket error.';
 
-    if (!hasConnected) {
-      PostgresqlException(msg,
+    if (hasConnected == false) {
+      throw PostgresqlException(msg,
           errorCode: error, connectionName: connectionName);
       // _connected.completeError(PostgresqlException(msg,
       //     errorCode: error, connectionName: connectionName));
@@ -1305,13 +1497,20 @@ class CoreConnection implements ExecutionContext {
   }
 
   void _handleSocketClosed() {
-    //print('_handleSocketClosed');
+   // print('CoreConnection@_handleSocketClosed start _connectionState $_connectionState');
+
     if (_connectionState != ConnectionState.closed) {
       _handleSocketError(null, closed: true);
     }
+
+    if (allowAttemptToReconnect == true) {
+      //print('_handleSocketClosed allowAttemptToReconnect: $allowAttemptToReconnect');
+      tryReconnect();
+    }
   }
 
-  void _handle_ERROR_RESPONSE(List<int> data) {
+  void _handle_ERROR_RESPONSE(List<int> data) async {
+    //print('CoreConnection@_handle_ERROR_RESPONSE start _connectionState $_connectionState');
     var dataSplit = Utils.splitList<int>(data, NULL_BYTE);
 
     // var mapKeyToVal = {
@@ -1356,43 +1555,44 @@ class CoreConnection implements ExecutionContext {
       sql: _query?.getSql,
     );
 
-    //print('handle_ERROR_RESPONSE $map ');
+    //print('handle_ERROR_RESPONSE $map \r\n hasConnected: $hasConnected');
 
-    if (!hasConnected) {
+    if (hasConnected == false) {
       _connectionState = ConnectionState.closed;
-      this._socket.destroy();
+      this._socket?.destroy();
       _connected.completeError(postgresqlException);
-      //hasConnected = false;
     } else {
-      //final query = _query;
-      //if (query != null) {
-      _query?.error = postgresqlException;
-      _query?.state = QueryState.error;
-      //}
+      final query = _query;
 
-      // print('handle_ERROR_RESPONSE $_query');
-      // if (query != null) {
-      //   query.state = QueryState.error;
-      //   query.error = postgresqlException;
-      //   // query.stackTrace = StackTrace.current;
-      // } else {
-      //   _notices.add(msg);
-      // }
+      query?.error = postgresqlException;
+      query?.state = QueryState.error;
+      query?.addStreamError(postgresqlException);
+      query?.close();
+
       //if code is 57P01 postgresql restart
       if (msg.code?.startsWith('57P') ?? false) {
+        //print( 'handle_ERROR_RESPONSE PG stop/restart query $query ${query?.getSql}');
+        _query = null;
+        _connectionState = ConnectionState.closed;
+        _socket?.close();
+        _socket?.destroy();
+
+        //throw postgresqlException;
+
         //PG stop/restart
-        final ow = owner;
-        if (ow != null)
-          ow.destroy();
-        else {
-          _connectionState = ConnectionState.closed;
-          _socket.destroy();
-        }
+        // final ow = owner;
+        // if (ow != null)
+        //   ow.destroy();
+        // else {
+        //   _connectionState = ConnectionState.closed;
+        //   _socket?.destroy();
+        // }
       }
     }
   }
 
   Future<void> close() async {
+    //print('CoreConnection@close start _connectionState = $_connectionState');
     if (_connectionState == ConnectionState.closed) return;
 
     _connectionState = ConnectionState.closed;
@@ -1403,7 +1603,7 @@ class CoreConnection implements ExecutionContext {
       var c = query;
       if (!c.streamIsClosed) {
         var postgresqlException = PostgresqlException(
-            'Connection closed before query could complete',
+            'Connection closed before query could complete ',
             connectionName: connectionName);
         c.state = QueryState.error;
         c.error = postgresqlException;
@@ -1413,36 +1613,38 @@ class CoreConnection implements ExecutionContext {
       }
     }
 
-    // if (_socket == null) {
-    //   throw PostgresqlException("connection is closed",
-    //       connectionName: connectionName);
-    // }
-
-    //send _MSG_TERMINATE
+    //
     try {
       _sock_write(TERMINATE_MSG);
-      _sock_flush();
+     // print('CoreConnection@close send _MSG_TERMINATE');
+      await _sock_flush();
+      await _socket?.close();
     } catch (e, st) {
-      _notices.add(ClientNotice(
-          severity: 'WARNING',
-          message: 'Exception while closing connection. Closed without sending '
-              'terminate message.',
-          connectionName: connectionName,
-          exception: e,
-          stackTrace: st));
+     // print('CoreConnection@close error');
+      if (_notices.isClosed == false) {
+        _notices.add(ClientNotice(
+            severity: 'WARNING',
+            message:
+                'Exception while closing connection. Closed without sending '
+                'terminate message.',
+            connectionName: connectionName,
+            exception: e,
+            stackTrace: st));
+      }
     } finally {
       // await _socket.close();
       // _socket = null;
       _destroy();
+      _connectionState = ConnectionState.closed;
     }
     // print('CoreConnection closed');
   }
 
   void _destroy() {
-    // print('CoreConnection _destroy');
+    //print('CoreConnection@_destroy start');
     hasConnected = false;
     _connectionState = ConnectionState.closed;
-    this._socket.destroy();
+    this._socket?.destroy();
     Timer.run(_notices.close);
     Timer.run(_notifications.close);
   }

@@ -26,6 +26,7 @@ class ConnectionState {
   // state is called "ready" in libpq. Doesn't make sense in a non-blocking impl.
   static const ConnectionState streaming = const ConnectionState('streaming');
   static const ConnectionState closed = const ConnectionState('closed');
+ // static const ConnectionState clossing = const ConnectionState('clossing');
 }
 
 class PreparedStatementState {

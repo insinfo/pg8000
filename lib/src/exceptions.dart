@@ -1,5 +1,6 @@
 import 'server_notice.dart';
 
+/// PostgreSQLException
 class PostgresqlException implements Exception {
   PostgresqlException(
     this.message, {

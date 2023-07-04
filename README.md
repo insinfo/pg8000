@@ -6,8 +6,7 @@ an attempt to port Tony Locke's pg8000 python library https://github.com/tlocke/
 
 Dargres is a pure-Dart PostgreSQL driver
 
-
-this is still experimental, that said, I believe it already works in several scenarios, but it is not yet well tested, the idea is to have as few dependencies as possible and be very fast, at the moment it only depends on the "crypto" and "convert" package , this code was heavily inspired by other PostgreSQL driver implementations and other related projects like
+this code was heavily inspired by other PostgreSQL driver implementations and other related projects like
 
 - [x] https://github.com/tlocke/pg8000
 - [x] https://github.com/wulczer/postgres-on-the-wire
@@ -48,10 +47,35 @@ I'm only able to do this implementation thanks to several open source projects, 
 - [x] latin1
 - [x] utf8
 - [x] ascii
+- [x] win1252
 
 #### extreme experimental
 - [x] Allow reconnection attempt if postgresql was restarted (allowAttemptToReconnect: true)
 
+#### connection pool
+```dart
+  final settings = ConnectionSettings(
+      user: 'username',
+      database: 'database_test',
+      host: 'localhost',
+      port: 5432,
+      password: 'password',
+      textCharset: 'win1252',
+      applicationName: 'dargres');
+
+   /// The maximum amount of concurrent connections.    
+  final concurrency = 4;
+  /// Allow reconnection attempt if PostgreSQL was restarted
+  final allowAttemptToReconnect = true;
+
+  final conn = PostgreSqlPool(concurrency, settings, allowAttemptToReconnect: allowAttemptToReconnect);
+
+  await conn.runInTransaction((ctx) async {
+    final items = await ctx.queryNamed(r'SELECT * FROM pg_stat_activity LIMIT $1',[10],timeout: Duration(seconds: 30));
+    print('main items: ${items}');      
+  });
+
+```
 
 ## Creating a connection with SSL and executing a simple select
 ```dart

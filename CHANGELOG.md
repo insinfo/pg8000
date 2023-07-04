@@ -39,3 +39,20 @@ queries Example:
 
 - add 'win1252' Windows CP1250 support to CoreConnection 
 - Example: var con = CoreConnection('user', database: 'db', host: 'localhost', port: 5432, password: 'pass', textCharset: 'win1252');
+
+## 3.0.0
+
+-  implemented Connection pool (PostgreSqlPool) with option to automatically reconnect in case of connection drop
+
+```dart
+ final settings = ConnectionSettings(
+    user: 'user',
+    database: 'database',
+    host: 'localhost',
+    port: 5433,
+    password: 'password',
+    textCharset: 'latin1',
+    applicationName: 'dargres',  
+  ); 
+  final conn = PostgreSqlPool(2, settings, allowAttemptToReconnect: true);
+```

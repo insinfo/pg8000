@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:io';
+
 
 import 'package:dargres/dargres.dart';
-import 'package:example_dargres/src/example.dart';
+
 
 //faz o damp do sali do posgresql 8:
 // pg_dumpall -U postgres  -f siamweb.sql
@@ -23,8 +23,8 @@ void main(List<String> args) async {
   await con.connect();
 
   Timer.periodic(Duration(milliseconds: 100), (timer) async {
-    var anoExercicio = '2019';
-    var numcgm = 0;
+    // var anoExercicio = '2019';
+    // var numcgm = 0;
 
     var data = await con.queryUnnamed('''
 SELECT
