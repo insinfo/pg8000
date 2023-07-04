@@ -13,7 +13,7 @@ dependencies:
   collection: '>=1.14.8 <2.0.0' 
   enough_convert: '>= 1.6.0 <2.0.0' 
   pool: ^1.5.0
-
+  stack_trace: '>=1.9.0 <2.0.0'
   #charcode: any #">=1.0.0" 
   #saslprep: ^1.0.2
 
