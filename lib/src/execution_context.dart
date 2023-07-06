@@ -1,14 +1,16 @@
-import 'package:dargres/dargres.dart';
+import 'query.dart';
+import 'to_statement.dart';
+import 'results.dart';
 
 abstract class ExecutionContext {
   /// execute a sql command e return affected row count
   /// Example: con.execute('DROP SCHEMA IF EXISTS myschema CASCADE;')
-  Future<int> execute(String sql, {Duration? timeout}) ;
+  Future<int> execute(String sql);
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
-  Future<Results> querySimple(String sql, {Duration? timeout}) ;
+  Future<Results> querySimple(String sql);
 
   /// execute a simple query whitout prepared statement
   /// this use a simple Postgresql Protocol
@@ -24,13 +26,12 @@ abstract class ExecutionContext {
   Future<Results> queryUnnamed(String sql, dynamic params,
       {PlaceholderIdentifier placeholderIdentifier =
           PlaceholderIdentifier.pgDefault,
-      bool isDeallocate = false,
-      Duration? timeout});
+      bool isDeallocate = false});
 
   Future<Results> queryNamed(String sql, dynamic params,
       {PlaceholderIdentifier placeholderIdentifier =
           PlaceholderIdentifier.pgDefault,
-      bool isDeallocate = false, Duration? timeout});
+      bool isDeallocate = false});
 
   /// prepare statement
   /// [params] parameters can be a list or a map,
@@ -43,19 +44,11 @@ abstract class ExecutionContext {
   Future<Query> prepareStatement(String sql, dynamic params,
       {bool isUnamedStatement = false,
       PlaceholderIdentifier placeholderIdentifier =
-          PlaceholderIdentifier.pgDefault,
-    Duration? timeout});
+          PlaceholderIdentifier.pgDefault});
 
   /// run prepared query with (prepareStatement) method and return List of Row
-  Future<Results> executeStatement(Query query, {bool isDeallocate = false, Duration? timeout});
+  Future<Results> executeStatement(Query query, {bool isDeallocate = false});
 
   /// run query prepared with (prepareStatement) method
   Future<ResultStream> executeStatementAsStream(Query query);
-
-  Future<T> runInTransaction<T>(Future<T> operation(TransactionContext ctx), {
-    Duration? timeout,
-    Duration? timeoutInner,
-  });
-
-  Future<CoreConnection> connect({int? delayBeforeConnect, int? delayAfterConnect});
 }

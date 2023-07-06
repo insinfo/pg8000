@@ -1,7 +1,5 @@
 import 'dart:async';
-
-
-
+import 'dart:math';
 import 'package:dargres/dargres.dart';
 
 void main(List<String> args) async {
@@ -15,7 +13,7 @@ void main(List<String> args) async {
       applicationName: 'dargres');
   //final conn = CoreConnection.fromSettings(settings);
   //await conn.connect();
-  final conn = PostgreSqlPool(1, settings, allowAttemptToReconnect: true);
+  final conn = PostgreSqlPool(4, settings, allowAttemptToReconnect: true);
 
   var querys = [
     'SELECT count(*) FROM public.sw_processo',
@@ -24,12 +22,12 @@ void main(List<String> args) async {
     'SELECT count(*) FROM public.sw_cga',
     'SELECT count(*) FROM public.sw_cgm'
   ];
-  //var rand = Random();
-  Timer.periodic(Duration(milliseconds: 200), (timer) async {
+  var rand = Random();
+  Timer.periodic(Duration(milliseconds: 1000), (timer) async {
     try {
      await conn.runInTransaction((ctx) async {
         final items =
-            await ctx.queryNamed(querys[0], []);
+            await ctx.queryNamed(querys[rand.nextInt(querys.length)], []);
         print('main items: ${items}');
         //sleep(Duration(milliseconds: 1500));
         // await Future.delayed(Duration(milliseconds: 1500));
@@ -38,7 +36,7 @@ void main(List<String> args) async {
         //   final statement = await ctx.prepareStatement(querys[0], []);
         //   final items = await ctx.executeStatement(statement,isDeallocate:true); //await statement.executeStatement();
         //   print('main items: ${items}');
-      });
+     });
     } catch (e, s) {
       print('main ${e}\r\n$s');
     }

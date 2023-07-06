@@ -10,6 +10,7 @@ export 'src/ssl_context.dart';
 export 'src/transaction_context.dart';
 export 'src/exceptions.dart';
 export 'src/to_statement.dart';
+export 'src/connection_interface.dart';
 export 'src/pool/postgresql_pool.dart';
 
 

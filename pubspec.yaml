@@ -1,5 +1,5 @@
 name: dargres
-version: 3.0.0
+version: 3.0.1
 description: >
   Dargres is a pure-Dart PostgreSQL driver based on Python pg8000
 homepage: https://github.com/insinfo/pg8000
@@ -13,7 +13,7 @@ dependencies:
   collection: '>=1.14.8 <2.0.0' 
   enough_convert: '>= 1.6.0 <2.0.0' 
   pool: ^1.5.0
-  stack_trace: '>=1.9.0 <2.0.0'
+  #stack_trace: '>=1.9.0 <2.0.0'
   #charcode: any #">=1.0.0" 
   #saslprep: ^1.0.2
 

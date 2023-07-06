@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dargres/dargres.dart';
 
 import 'column_description.dart';
+import 'row_info.dart';
 
 class QueryState {
   final int value;
@@ -53,15 +54,12 @@ class Query {
 
   CoreConnection? connection;
 
-  Future<Results> executeStatement(
-      {bool isDeallocate = false,
-      Duration? timeout = const Duration(seconds: 60)}) {
+  Future<Results> executeStatement({bool isDeallocate = false}) {
     if (_transactionContext != null) {
       return _transactionContext!
-          .executeStatement(this, isDeallocate: isDeallocate, timeout: timeout);
+          .executeStatement(this, isDeallocate: isDeallocate);
     } else if (connection != null) {
-      return connection!
-          .executeStatement(this, isDeallocate: isDeallocate, timeout: timeout);
+      return connection!.executeStatement(this, isDeallocate: isDeallocate);
     } else {
       throw PostgresqlException(
           'no connection or transactionContext for execute statement');
@@ -71,10 +69,9 @@ class Query {
   /// generate unique name for named prepared Statement
   String get statementName {
     //pdo_stmt_00000004
-    //dargres_000000000000
     //return isUnamedStatement == false  ? '$prepareStatementId'.padLeft(12, '0') : '';
     return isUnamedStatement == false
-        ? 'dargres_' + '$prepareStatementId'.padLeft(12, '0')
+        ? 'dargres_stmt_' + '$prepareStatementId'.padLeft(8, '0')
         : '';
   } //dargres_statement_$prepareStatementId
 
@@ -223,14 +220,11 @@ class Query {
 
   Future<void> close() async {
     await _controller.close();
-    state = QueryState.done;
-    //print('Query@close');
+    state = QueryState.done;    
   }
 
   void addStreamError(Object err, [StackTrace? stackTrace]) {
-    if (_controller.isClosed == false) {
-      _controller.addError(err, stackTrace);
-    }
+    _controller.addError(err, stackTrace);
     // stream will be closed once the ready for query message is received.
   }
 }

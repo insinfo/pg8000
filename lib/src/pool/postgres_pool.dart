@@ -1,4 +1,4 @@
-import 'dart:async';
+/*import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -653,7 +653,7 @@ class PgPool implements ExecutionContext {
     String? traceId,
   }) {
     return run(
-      (c) => c.execute(fmtString, timeout: timeout),
+      (c) => c.execute(fmtString),
       sessionId: sessionId,
       traceId: traceId,
     );
@@ -715,20 +715,7 @@ class PgPool implements ExecutionContext {
     throw UnimplementedError();
   }
 
-  @override
-  Future<T> runInTransaction<T>(
-    Future<T> Function(TransactionContext ctx) operation, {
-    Duration? timeout = const Duration(seconds: 60),
-    Duration? timeoutInner = const Duration(seconds: 60),
-  }) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<CoreConnection> connect(
-      {int? delayBeforeConnect, int? delayAfterConnect}) {
-    throw UnimplementedError();
-  }
+ 
 }
 
 class _ConnectionCtx {
@@ -818,9 +805,9 @@ class _PgExecutionContextWrapper implements ExecutionContext {
 
   @override
   Future<int> execute(String fmtString,
-      {Duration? timeout = const Duration(seconds: 60)}) {
+      {Duration? timeout }) {
     return _run(
-      () => _delegate.execute(fmtString, timeout: timeout),
+      () => _delegate.execute(fmtString),
       fmtString,
       [],
     );
@@ -906,3 +893,4 @@ class _PgExecutionContextWrapper implements ExecutionContext {
 
   //int get queueSize => _delegate.queryQueueSize;
 }
+*/

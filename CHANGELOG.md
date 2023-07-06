@@ -56,3 +56,7 @@ queries Example:
   ); 
   final conn = PostgreSqlPool(2, settings, allowAttemptToReconnect: true);
 ```
+
+## 3.0.1
+
+- fixes critical bug in version 3.0.0 that caused stack overflow, timeout parameters were removed from query execution methods such as queryNamed, queryUnnamed, querySimple, execute, prepareStatement, executeStatement

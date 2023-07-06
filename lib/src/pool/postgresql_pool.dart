@@ -5,8 +5,10 @@ import 'package:dargres/src/connection_state.dart';
 
 import 'package:pool/pool.dart';
 
+import '../connection_interface.dart';
+
 /// A [QueryExecutor] that manages a pool of PostgreSQL connections.
-class PostgreSqlPool implements ExecutionContext {
+class PostgreSqlPool implements ConnectionInterface {
   /// The maximum amount of concurrent connections.
   final int size;
   List<CoreConnection> connections = [];
@@ -15,8 +17,8 @@ class PostgreSqlPool implements ExecutionContext {
   static const defaultTimeout = const Duration(seconds: 300);
 
   int _index = 0;
-  Pool _pool;
-  Pool _connMutex = Pool(1);
+  final Pool _pool;
+  final Pool _connMutex = Pool(1);
 
   /// Allow reconnection attempt if PostgreSQL was restarted
   bool allowAttemptToReconnect = false;
@@ -27,17 +29,16 @@ class PostgreSqlPool implements ExecutionContext {
   ConnectionSettings connectionInfo;
 
   PostgreSqlPool(this.size, this.connectionInfo,
-      {this.allowAttemptToReconnect = false,
-      this.timeout: defaultTimeout})
+      {this.allowAttemptToReconnect = false, this.timeout: defaultTimeout})
       : _pool = Pool(size, timeout: timeout) {
     // _pool = Pool(size, timeout: timeout);
     assert(size > 0, 'Connection pool cannot be empty.');
   }
 
-  void reInit() {
-    _connMutex = Pool(1);
-    _pool = Pool(size, timeout: timeout);
-  }
+  // void reInit() {
+  //   _connMutex = Pool(1);
+  //   _pool = Pool(size, timeout: timeout);
+  // }
 
   /// Closes all connections.
   Future close() async {
@@ -51,10 +52,10 @@ class PostgreSqlPool implements ExecutionContext {
     if (connections.isEmpty) {
       final listCon = await Future.wait(
         List.generate(size, (_) async {
-          //print('PostgreSqlPool@_open Spawning connections...');
           //  logger?.fine('Spawning connections...');
           final settings = connectionInfo.clone();
-          settings.connectionName = 'connection_$_index';
+          settings.connectionName = 'pool_connection_$_index';
+          //print( 'PostgreSqlPool@_open spawning connection: ${settings.connectionName}');
           final executor = CoreConnection.fromSettings(settings);
           await executor.connect();
           return executor;
@@ -64,8 +65,7 @@ class PostgreSqlPool implements ExecutionContext {
     }
   }
 
-  Future<CoreConnection> _next(
-      {Duration timeout = defaultTimeout}) {
+  Future<CoreConnection> _next() {
     //print('PostgreSqlPool@_next');
     return _connMutex.withResource(() async {
       await _open();
@@ -73,13 +73,12 @@ class PostgreSqlPool implements ExecutionContext {
       final currentConnIdx = _index++;
       //print('PostgreSqlExecutorPool currentConnIdx $currentConnIdx ');
       return connections[currentConnIdx];
-    }).timeout(timeout);
+    });
   }
 
   /// execute a sql command e return affected row count
   /// Example: con.execute('DROP SCHEMA IF EXISTS myschema CASCADE;')
-  Future<int> execute(String sql,
-      {Duration? timeout = defaultTimeout}) {
+  Future<int> execute(String sql, {Duration? timeout}) {
     //print('PostgreSqlPool@execute');
     return _pool.withResource(() async {
       final executor = await _next();
@@ -94,44 +93,49 @@ class PostgreSqlPool implements ExecutionContext {
       }
       if (executor.connectionState == ConnectionState.authenticating) {
         return Future.error(
-            Exception('PostgreSqlPool@runInTransaction authenticating...'));
+            Exception('PostgreSqlPool@execute authenticating...'));
       }
-      final result = await executor.execute(sql, timeout: timeout);
-      return result;
+      if (timeout != null) {
+        return executor.execute(sql).timeout(timeout);
+      } else {
+        return executor.execute(sql);
+      }
     });
   }
 
-  Future<TransactionContext> beginTransaction(
-      {Duration? timeout =defaultTimeout}) {
+  Future<TransactionContext> beginTransaction({Duration? timeout}) {
     //print('PostgreSqlPool@execute');
-    return _pool.withResource(() async {
-      final executor = await _next();
-      //print('PostgreSqlPool@execute connectionState: ${executor.connectionState}');
-      if (executor.connectionState == ConnectionState.closed) {
-        await executor.tryReconnect();
-        return Future.error(
-            Exception('PostgreSqlPool@execute trying to reconnect...'));
-      }
-      if (executor.connectionState == ConnectionState.socketConnecting) {
-        return Future.error(Exception('PostgreSqlPool@execute connecting...'));
-      }
-      if (executor.connectionState == ConnectionState.authenticating) {
-        return Future.error(
-            Exception('PostgreSqlPool@runInTransaction authenticating...'));
-      }
-      final result = await executor.beginTransaction(timeout: timeout);
-      return result;
-    });
+    // return _pool.withResource(() async {
+    //   final executor = await _next();
+    //   //print('PostgreSqlPool@execute connectionState: ${executor.connectionState}');
+    //   if (executor.connectionState == ConnectionState.closed) {
+    //     await executor.tryReconnect();
+    //     return Future.error(
+    //         Exception('PostgreSqlPool@execute trying to reconnect...'));
+    //   }
+    //   if (executor.connectionState == ConnectionState.socketConnecting) {
+    //     return Future.error(Exception('PostgreSqlPool@execute connecting...'));
+    //   }
+    //   if (executor.connectionState == ConnectionState.authenticating) {
+    //     return Future.error(
+    //         Exception('PostgreSqlPool@beginTransaction authenticating...'));
+    //   }
+    //   final result = await executor.beginTransaction(timeout: timeout);
+    //   return result;
+    // });
+    throw UnimplementedError();
   }
 
   Future<void> commit(TransactionContext transaction,
-      {Duration? timeout =defaultTimeout}) async {
-    await transaction.connection.commit(transaction, timeout: timeout);
+      {Duration? timeout}) async {
+    //await transaction.connection.commit(transaction, timeout: timeout);
+    throw UnimplementedError();
   }
 
   Future<void> rollBack(TransactionContext transaction,
-      {Duration? timeout = defaultTimeout}) async {
-    await transaction.connection.rollBack(transaction, timeout: timeout);
+      {Duration? timeout}) async {
+    //await transaction.connection.rollBack(transaction, timeout: timeout);
+    throw UnimplementedError();
   }
 
   /// execute querys in transaction
@@ -139,15 +143,25 @@ class PostgreSqlPool implements ExecutionContext {
   /// [timeoutInner] timeout of operation inside Transaction
   Future<T> runInTransaction<T>(
     Future<T> operation(TransactionContext ctx), {
-    Duration? timeout = defaultTimeout,
-    Duration? timeoutInner = defaultTimeout,
+    Duration? timeout,
+    Duration? timeoutInner,
   }) async {
+    if (timeout == null) {
+      timeout = defaultTimeout;
+    }
+    if (timeoutInner == null) {
+      timeoutInner = defaultTimeout;
+    }
+
+    // print('runInTransaction timeout $timeout | timeoutInner $timeoutInner');
+
     // print('PostgreSqlPool@runInTransaction');
     return _pool.withResource(() async {
       final executor = await _next();
       //print( 'PostgreSqlPool@runInTransaction connectionState: ${executor.connectionState}');
       if (executor.connectionState == ConnectionState.closed) {
         await executor.tryReconnect();
+        //print('runInTransaction tryReconnect end');
         return Future.error(Exception(
             'PostgreSqlPool@runInTransaction trying to reconnect...'));
       }
@@ -163,12 +177,30 @@ class PostgreSqlPool implements ExecutionContext {
       var result;
       TransactionContext? transa;
       try {
-        transa = await executor.beginTransaction(timeout: timeout);
-        result = await operation(transa).timeout(timeoutInner!);
-        await executor.commit(transa, timeout: timeout);
+        if (timeout != null) {
+          transa = await executor.beginTransaction().timeout(timeout);
+        } else {
+          transa = await executor.beginTransaction();
+        }
+
+        if (timeoutInner != null) {
+          result = await operation(transa).timeout(timeoutInner);
+        } else {
+          result = await operation(transa);
+        }
+
+        if (timeout != null) {
+          await executor.commit(transa).timeout(timeout);
+        } else {
+          await executor.commit(transa);
+        }
       } catch (e) {
         if (transa != null) {
-          await executor.rollBack(transa, timeout: timeout);
+          if (timeout != null) {
+            await executor.rollBack(transa).timeout(timeout);
+          } else {
+            await executor.rollBack(transa);
+          }
         }
         rethrow;
       }
@@ -187,7 +219,7 @@ class PostgreSqlPool implements ExecutionContext {
       {PlaceholderIdentifier placeholderIdentifier =
           PlaceholderIdentifier.pgDefault,
       bool isDeallocate = false,
-      Duration? timeout = defaultTimeout}) {
+      Duration? timeout}) {
     //print('PostgreSqlPool@queryUnnamed');
     return _pool.withResource(() async {
       final executor = await _next();
@@ -204,14 +236,24 @@ class PostgreSqlPool implements ExecutionContext {
           throw Exception('PostgreSqlPool@queryNamed authenticating...');
         }
       }
-      var result;
 
-      result = await executor.queryUnnamed(sql, params,
+      if (timeout != null) {
+        return executor
+            .queryUnnamed(
+              sql,
+              params,
+              placeholderIdentifier: placeholderIdentifier,
+              isDeallocate: isDeallocate,
+            )
+            .timeout(timeout);
+      } else {
+        return executor.queryUnnamed(
+          sql,
+          params,
           placeholderIdentifier: placeholderIdentifier,
           isDeallocate: isDeallocate,
-          timeout: timeout);
-
-      return result;
+        );
+      }
     });
   }
 
@@ -225,7 +267,7 @@ class PostgreSqlPool implements ExecutionContext {
       {PlaceholderIdentifier placeholderIdentifier =
           PlaceholderIdentifier.pgDefault,
       bool isDeallocate = false,
-      Duration? timeout = defaultTimeout}) {
+      Duration? timeout}) {
     return _pool.withResource(() async {
       final executor = await _next();
       if (allowAttemptToReconnect == true) {
@@ -241,19 +283,28 @@ class PostgreSqlPool implements ExecutionContext {
           throw Exception('PostgreSqlPool@queryNamed authenticating...');
         }
       }
-      var result;
 
-      result = await executor.queryNamed(sql, params,
+      if (timeout != null) {
+        return executor
+            .queryNamed(
+              sql,
+              params,
+              placeholderIdentifier: placeholderIdentifier,
+              isDeallocate: isDeallocate,
+            )
+            .timeout(timeout);
+      } else {
+        return executor.queryNamed(
+          sql,
+          params,
           placeholderIdentifier: placeholderIdentifier,
           isDeallocate: isDeallocate,
-          timeout: timeout);
-
-      return result;
+        );
+      }
     });
   }
 
-  Future<Results> querySimple(String sql,
-      {Duration? timeout = defaultTimeout}) async {
+  Future<Results> querySimple(String sql, {Duration? timeout}) async {
     var res = Results([], RowsAffected());
 
     res = await _pool.withResource<Results>(() async {
@@ -272,9 +323,9 @@ class PostgreSqlPool implements ExecutionContext {
           throw Exception('PostgreSqlPool@querySimple authenticating...');
         }
       }
-      var result;
+
       // try {
-      result = await executor.querySimple(sql, timeout: timeout);
+      // result = await executor.querySimple(sql);
       // } catch (e) {
       //   if (allowAttemptToReconnect == true) {
       //FATAL 28000 no pg_hba.conf entry for host
@@ -287,46 +338,51 @@ class PostgreSqlPool implements ExecutionContext {
       //   rethrow;
       // }
 
-      return result;
+      if (timeout != null) {
+        return executor.querySimple(sql).timeout(timeout);
+      } else {
+        return executor.querySimple(sql);
+      }
     });
 
     return res;
   }
 
   Future<ResultStream> querySimpleAsStream(String sql) {
-    return _pool.withResource(() async {
-      final executor = await _next();
-      if (allowAttemptToReconnect == true) {
-        if (executor.connectionState == ConnectionState.closed) {
-          await executor.tryReconnect();
-          throw Exception(
-              'PostgreSqlPool@querySimpleAsStream trying to reconnect...');
-        }
-        if (executor.connectionState == ConnectionState.socketConnecting) {
-          throw Exception(
-              'PostgreSqlPool@querySimpleAsStream connecting...'); //Future.error(
-        }
-        if (executor.connectionState == ConnectionState.authenticating) {
-          throw Exception(
-              'PostgreSqlPool@querySimpleAsStream authenticating...');
-        }
-      }
-      var result;
-      //try {
-      result = await executor.querySimpleAsStream(sql);
-      // } catch (e) {
-      //   if (allowAttemptToReconnect == true) {
-      //     //FATAL 28000 no pg_hba.conf entry for host
-      //     //if code is 57P01 postgresql restart
-      //     if (e.toString().contains('57P') || e.toString().contains('28000')) {
-      //       //print('PostgreSqlPool@querySimpleAsStream sem conexão ${executor.connectionName}');
-      //       await executor.tryReconnect().timeout(timeout);
-      //     }
-      //   }
-      //   rethrow;
-      // }
-      return result;
-    });
+    // return _pool.withResource(() async {
+    //   final executor = await _next();
+    //   if (allowAttemptToReconnect == true) {
+    //     if (executor.connectionState == ConnectionState.closed) {
+    //       await executor.tryReconnect();
+    //       throw Exception(
+    //           'PostgreSqlPool@querySimpleAsStream trying to reconnect...');
+    //     }
+    //     if (executor.connectionState == ConnectionState.socketConnecting) {
+    //       throw Exception(
+    //           'PostgreSqlPool@querySimpleAsStream connecting...'); //Future.error(
+    //     }
+    //     if (executor.connectionState == ConnectionState.authenticating) {
+    //       throw Exception(
+    //           'PostgreSqlPool@querySimpleAsStream authenticating...');
+    //     }
+    //   }
+    //   var result;
+
+    //   result = await executor.querySimpleAsStream(sql);
+    // } catch (e) {
+    //   if (allowAttemptToReconnect == true) {
+    //     //FATAL 28000 no pg_hba.conf entry for host
+    //     //if code is 57P01 postgresql restart
+    //     if (e.toString().contains('57P') || e.toString().contains('28000')) {
+    //       //print('PostgreSqlPool@querySimpleAsStream sem conexão ${executor.connectionName}');
+    //       await executor.tryReconnect().timeout(timeout);
+    //     }
+    //   }
+    //   rethrow;
+    // }
+    //return result;
+    // });
+    throw UnimplementedError();
   }
 
   /// prepare statement
@@ -343,7 +399,7 @@ class PostgreSqlPool implements ExecutionContext {
     bool isUnamedStatement = false,
     PlaceholderIdentifier placeholderIdentifier =
         PlaceholderIdentifier.pgDefault,
-    Duration? timeout = defaultTimeout,
+    Duration? timeout,
   }) {
     return _pool.withResource(() async {
       final executor = await _next();
@@ -362,12 +418,11 @@ class PostgreSqlPool implements ExecutionContext {
               'PostgreSqlPool@querySimpleAsStream authenticating...');
         }
       }
-      var result;
+
       //try {
-      result = await executor.prepareStatement(sql, params,
-          isUnamedStatement: isUnamedStatement,
-          placeholderIdentifier: placeholderIdentifier,
-          timeout: timeout);
+      // result = await executor.prepareStatement(sql, params,
+      //     isUnamedStatement: isUnamedStatement,
+      //     placeholderIdentifier: placeholderIdentifier);
       // } catch (e) {
       //   if (allowAttemptToReconnect == true) {
       //     //FATAL 28000 no pg_hba.conf entry for host
@@ -379,7 +434,17 @@ class PostgreSqlPool implements ExecutionContext {
       //   }
       //   rethrow;
       // }
-      return result;
+      if (timeout != null) {
+        return executor
+            .prepareStatement(sql, params,
+                isUnamedStatement: isUnamedStatement,
+                placeholderIdentifier: placeholderIdentifier)
+            .timeout(timeout);
+      } else {
+        return executor.prepareStatement(sql, params,
+            isUnamedStatement: isUnamedStatement,
+            placeholderIdentifier: placeholderIdentifier);
+      }
     });
   }
 
@@ -387,11 +452,15 @@ class PostgreSqlPool implements ExecutionContext {
   Future<Results> executeStatement(
     Query query, {
     bool isDeallocate = false,
-    Duration? timeout = defaultTimeout,
+    Duration? timeout,
   }) async {
-    final result = await query.executeStatement(
-        isDeallocate: isDeallocate, timeout: timeout);
-    return result;
+    if (timeout != null) {
+      return query
+          .executeStatement(isDeallocate: isDeallocate)
+          .timeout(timeout);
+    } else {
+      return query.executeStatement(isDeallocate: isDeallocate);
+    }
   }
 
   Future<ResultStream> executeStatementAsStream(Query query) {
@@ -399,8 +468,7 @@ class PostgreSqlPool implements ExecutionContext {
   }
 
   @override
-  Future<CoreConnection> connect(
-      {int? delayBeforeConnect, int? delayAfterConnect}) {
+  Future<CoreConnection> connect({int? delayBeforeConnect}) {
     throw UnimplementedError();
   }
 }
