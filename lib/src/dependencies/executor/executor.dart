@@ -4,7 +4,9 @@ library executor;
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:stack_trace/stack_trace.dart';
+import 'package:dargres/src/dependencies/stack_trace/stack_trace.dart';
+
+//import 'package:stack_trace/stack_trace.dart';
 
 part 'executor_impl.dart';
 
