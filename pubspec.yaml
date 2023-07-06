@@ -13,13 +13,12 @@ dependencies:
   collection: '>=1.14.8 <2.0.0' 
   enough_convert: '>= 1.6.0 <2.0.0' 
   pool: ^1.5.0
+  path: ^1.8.0
   #stack_trace: '>=1.9.0 <2.0.0'
   #charcode: any #">=1.0.0" 
   #saslprep: ^1.0.2
-
-dev_dependencies:
-  #only for test of terrier buffer
-  path: any
+  
+dev_dependencies:    
   matcher: any #0.12.13 
   benchmark_harness: any #2.2.0
   test: any #1.22.1
