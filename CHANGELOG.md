@@ -60,3 +60,7 @@ queries Example:
 ## 3.0.1
 
 - fixes critical bug in version 3.0.0 that caused stack overflow, timeout parameters were removed from query execution methods such as queryNamed, queryUnnamed, querySimple, execute, prepareStatement, executeStatement
+
+## 3.0.2
+
+- fix bug on set application_name to postgresql < 8.2  

@@ -48,6 +48,8 @@ class CoreConnection implements ConnectionInterface {
   SslContext? sslContext;
 
   bool tcpKeepalive;
+
+  /// application_name not work with postgreSql < 8.2
   String? applicationName;
   dynamic replication;
   // for SCRAM-SHA-256 auth
@@ -210,9 +212,14 @@ class CoreConnection implements ConnectionInterface {
     _initParams = <String, dynamic>{
       "user": user,
       "database": database,
-      "application_name": applicationName,
+      // applicationName não funciona com postgre menor que 8.2
+      // "application_name": applicationName,
       "replication": replication,
     };
+
+    if (applicationName != null) {
+      _initParams['application_name'] = applicationName;
+    }
 
     var init_params_entries = [..._initParams.entries];
     for (var entry in init_params_entries) {
@@ -473,9 +480,9 @@ class CoreConnection implements ConnectionInterface {
   Future<TransactionContext> beginTransaction() async {
     var transaction = TransactionContext(_transactionId, this);
     //'START TRANSACTION'
-   // print('core@beginTransaction');
+    // print('core@beginTransaction');
     final commandBegin = 'BEGIN';
-   await _enqueueTransaction(transaction);
+    await _enqueueTransaction(transaction);
     await transaction.execute(commandBegin);
     _transactionId++;
     return transaction;
@@ -574,12 +581,12 @@ class CoreConnection implements ConnectionInterface {
   }
 
   Future<void> tryReconnect() async {
-   // print('tryReconnect: start');
+    // print('tryReconnect: start');
     if (_connectionState == ConnectionState.socketConnecting) {
       //print( 'tryReconnect: não tenta reconectar pois esta fazendo conexão agora');
       return;
     }
-   
+
     _tryReconnectCount++;
     //await close();
     // tryReconnectLimit
