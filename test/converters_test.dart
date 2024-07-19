@@ -1,13 +1,16 @@
 import 'dart:typed_data';
 
 import 'package:dargres/src/converters.dart';
+import 'package:dargres/src/server_info.dart';
+import 'package:dargres/src/timezone_settings.dart';
 import 'package:test/test.dart';
 
 void main() {
- late TypeConverter typeConverter;
+  late TypeConverter typeConverter;
 
   setUp(() async {
-    typeConverter = TypeConverter('utf8', null);
+    typeConverter =
+        TypeConverter('utf8', ServerInfo(timeZone: TimeZoneSettings('UTC')));
   });
 
   group('TypeConverter', () {

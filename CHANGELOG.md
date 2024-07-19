@@ -64,3 +64,7 @@ queries Example:
 ## 3.0.2
 
 - fix bug on set application_name to postgresql < 8.2  
+
+## 3.1.0
+
+- **Breaking change**: decode timestamp without timezone as local DateTime and decode timestamp with timezone respecting the timezone defined in the connection

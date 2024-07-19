@@ -2,12 +2,16 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:convert/convert.dart';
+
 import 'package:enough_convert/enough_convert.dart';
 
 import 'dependencies/charcode/ascii.dart';
 import 'exceptions.dart';
 import 'server_info.dart';
 import 'utils/utils.dart';
+
+import 'package:dargres/src/timezone_settings.dart' as tz;
+//import 'dependencies/timezone/timezone.dart' as tz;
 
 //enum
 // class ArrayState {
@@ -105,7 +109,7 @@ class TypeConverter {
   static const MAX_INT8 = 9223372036854775807;
 
   String? connectionName;
-  ServerInfo? serverInfo;
+  ServerInfo serverInfo;
   String textCharset;
 
   TypeConverter(this.textCharset, this.serverInfo, {this.connectionName});
@@ -114,7 +118,7 @@ class TypeConverter {
     return data == "t";
   }
 
-  /// Dart bool para postgresql
+  /// Dart bool to postgresql
   String bool_out(data) {
     //return "true" if v else "false"
     return data != 0 && data != null && data != false && data != ''
@@ -138,7 +142,7 @@ class TypeConverter {
     return String.fromCharCodes(v);
   }
 
-  /// Dart String para postgresql
+  /// Dart String to postgresql
   dynamic string_out(v) {
     return v;
   }
@@ -147,7 +151,7 @@ class TypeConverter {
     return null;
   }
 
-  /// Dart double para postgresql
+  /// Dart double to postgresql
   dynamic float_out(n) {
     if (n.isNaN) return "'nan'";
     if (n == double.infinity) return "'infinity'";
@@ -164,7 +168,7 @@ class TypeConverter {
     return n.toString();
   }
 
-  /// Dart int para postgresql
+  /// Dart int to postgresql
   dynamic int_out(n) {
     //return int.parse(v);
     if (n.isNaN) return "'nan'";
@@ -218,12 +222,12 @@ class TypeConverter {
     return val;
   }
 
-  /// Dart date para postgresql
+  /// Dart date to postgresql
   String date_out(DateTime v) {
     return v.toIso8601String();
   }
 
-  /// Dart DateTime para postgresql
+  /// Dart DateTime to postgresql
   String datetime_out(DateTime v) {
     // if v.tzinfo is None:
     //     return v.isoformat()
@@ -232,12 +236,12 @@ class TypeConverter {
     return v.toIso8601String();
   }
 
-  /// Dart enum para postgresql
+  /// Dart enum to postgresql
   dynamic enum_out(v) {
     return v.value;
   }
 
-  /// Dart Map para postgresql
+  /// Dart Map to postgresql
   String json_out(v) {
     return jsonEncode(v);
   }
@@ -386,14 +390,13 @@ class TypeConverter {
   }
 
   dynamic date_in(value) {
-    if (value == 'infinity' || value == '-infinity') {
+    if (value == 'infinity' || value == '-infinity' || value == null) {
       // throw PostgresqlException(
       //   'A timestamp value "$value", cannot be represented '
       //   'as a Dart object.',
       // );
       return null;
     }
-
     // var formattedValue = value;
     // formattedValue = formattedValue + 'T00:00:00Z';
     return DateTime.tryParse(value);
@@ -401,47 +404,108 @@ class TypeConverter {
 
   /// convert de posgresql timestamp para dart DateTime
   dynamic timestamp_in(value) {
-    if (value == 'infinity' || value == '-infinity') {
+    if (value == 'infinity' || value == '-infinity' || value == null) {
       // throw PostgresqlException(
       //   'A timestamp value "$value", cannot be represented '
       //   'as a Dart object.',
       // );
       return null;
     }
-    //var pattern =  value.contain('.') ? "%Y-%m-%d %H:%M:%S.%f" : "%Y-%m-%d %H:%M:%S";
-    var formattedValue = value;
-    //print('timestamp_in value: $value');
-    return DateTime.tryParse(formattedValue);
+
+    final formattedValue = value;
+    final dateTime = DateTime.tryParse(formattedValue);
+    return dateTime;
   }
 
-  /// Decodes [value] into a [DateTime] instance.
+  /// Decodes PostgreSql text [value] into a [DateTime] instance.
   ///
-  /// Note: it will convert it to local time (via [DateTime.toLocal])
   ///
   /// TODO use https://github.com/AKushWarrior/instant/tree/master/lib/src
-  dynamic timestamptz_in(value) {
-    // print('timestamptz_in $value ${serverInfo.timeZone}');
-// Built in Dart dates can either be local time or utc. Which means that the
+  /// https://github.com/AKushWarrior/instant/blob/master/lib/src/timezone.dart
+  DateTime? timestamptz_in(String? value) {
+    // Note: it will convert it to local time (via [DateTime.toLocal])
+    // Built in Dart dates can either be local time or utc. Which means that the
     // the postgresql timezone parameter for the connection must be either set
     // to UTC, or the local time of the server on which the client is running.
     // This restriction could be relaxed by using a more advanced date library
     // capable of creating DateTimes for a non-local time zone.
 
-    if (value == 'infinity' || value == '-infinity') {
+    if (value == 'infinity' || value == '-infinity' || value == null) {
       // throw PostgresqlException(
       //   'A timestamp value "$value", cannot be represented '
       //   'as a Dart object.',
       // );
       return null;
     }
+    var formattedValue = value;
     //if infinity values are required, rewrite the sql query to cast
     //the value to a string, i.e. your_column::text.
-    var formattedValue = value;
-    //formattedValue += 'Z';
+    // formattedValue = formattedValue.substring(0, formattedValue.length - 3);
     // PG will return the timestamp in the connection's timezone. The resulting DateTime.parse will handle accordingly.
 
-    //var pattern = value.contain('.') ? "%Y-%m-%d %H:%M:%S.%f%z" : "%Y-%m-%d %H:%M:%S%z";
-    return DateTime.tryParse(formattedValue);
+    var datetime = DateTime.tryParse(formattedValue);
+
+    if (datetime != null ) {
+      // serverInfo.timeZone == UTC | America/Sao_Paulo | ...
+      //final tzLocation = tz.getLocation(serverInfo.timeZone!);
+
+      final pgTimeZone = serverInfo.timeZone.value.toLowerCase();
+
+      final tzLocations = tz.timeZoneDatabase.locations.entries
+          .where((e) {
+            return (e.key.toLowerCase() == pgTimeZone ||
+                e.value.currentTimeZone.abbreviation.toLowerCase() ==
+                    pgTimeZone);
+          })
+          .map((e) => e.value)
+          .toList();
+
+      if (tzLocations.isEmpty) {
+        throw tz.LocationNotFoundException(
+            'Location with the name "$pgTimeZone" doesn\'t exist');
+      }
+
+      final tzLocation = tzLocations.first;
+      final offsetInMilliseconds = tzLocation.currentTimeZone.offset;
+
+      // Conversion of milliseconds to hours
+      final double offset = offsetInMilliseconds / (1000 * 60 * 60);
+
+      if (offset < 0) {
+        final subtr = Duration(
+            hours: offset.abs().truncate(),
+            minutes: ((offset.abs() % 1) * 60).round());
+        datetime = datetime.subtract(subtr);
+        final specificDate = tz.TZDateTime(
+            tzLocation,
+            datetime.year,
+            datetime.month,
+            datetime.day,
+            datetime.hour,
+            datetime.minute,
+            datetime.second,
+            datetime.millisecond,
+            datetime.microsecond);
+        return specificDate;
+      } else if (offset > 0) {
+        final addr = Duration(
+            hours: offset.truncate(), minutes: ((offset % 1) * 60).round());
+        datetime = datetime.add(addr);
+        final specificDate = tz.TZDateTime(
+            tzLocation,
+            datetime.year,
+            datetime.month,
+            datetime.day,
+            datetime.hour,
+            datetime.minute,
+            datetime.second,
+            datetime.millisecond,
+            datetime.microsecond);
+        return specificDate;
+      }
+    }
+
+    return datetime;
   }
 
   dynamic interval_in(value) {
@@ -944,16 +1008,16 @@ class TypeConverter {
   /// Decodes [value] into a [DateTime] instance.
   ///
   /// Note: it will convert it to local time (via [DateTime.toLocal])
-  DateTime decodeDateTime(String value, int pgType) {
+  DateTime? decodeDateTime(String value, int pgType) {
     // Built in Dart dates can either be local time or utc. Which means that the
     // the postgresql timezone parameter for the connection must be either set
     // to UTC, or the local time of the server on which the client is running.
     // This restriction could be relaxed by using a more advanced date library
     // capable of creating DateTimes for a non-local time zone.
 
-    if (value == 'infinity' || value == '-infinity')
-      throw _error('A timestamp value "$value", cannot be represented '
-          'as a Dart object.');
+    if (value == 'infinity' || value == '-infinity') return null;
+    // throw _error('A timestamp value "$value", cannot be represented '
+    //     'as a Dart object.');
     //if infinity values are required, rewrite the sql query to cast
     //the value to a string, i.e. your_column::text.
 
@@ -964,14 +1028,15 @@ class TypeConverter {
       formattedValue = '-' + value.substring(0, value.length - 3);
 
     if (pgType == TIMESTAMP) {
-      formattedValue += 'Z';
+      formattedValue; // += 'Z';
     } else if (pgType == TIMESTAMPTZ) {
       // PG will return the timestamp in the connection's timezone. The resulting DateTime.parse will handle accordingly.
+      formattedValue += 'Z';
     } else if (pgType == DATE) {
-      formattedValue = formattedValue + 'T00:00:00Z';
+      formattedValue; // = formattedValue + 'T00:00:00Z';
     }
-
-    return DateTime.parse(formattedValue).toLocal();
+    //.toLocal()
+    return DateTime.tryParse(formattedValue);
   }
 
   /// Decodes an array value, [value]. Each item of it is [pgType].

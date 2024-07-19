@@ -2,15 +2,13 @@
 
 import 'dart:async';
 import 'dart:collection';
-import 'dart:convert';
 
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:dargres/src/timezone_settings.dart';
 import 'connection_interface.dart';
-import 'dependencies/buffer_isoos/buffer.dart';
-import 'execution_context.dart';
 import 'results.dart';
 
 import 'dependencies/sasl_scram/sasl_scram.dart';
@@ -98,7 +96,7 @@ class CoreConnection implements ConnectionInterface {
 
   //Map<String, dynamic> serverParameters = <String, dynamic>{};
 
-  ServerInfo serverInfo = ServerInfo();
+  ServerInfo serverInfo = ServerInfo(timeZone: TimeZoneSettings('UTC'));
 
   String user;
   String? password;
@@ -145,8 +143,13 @@ class CoreConnection implements ConnectionInterface {
   TransactionContext? _currentTransaction;
   int _transactionId = 0;
 
+  TimeZoneSettings timeZone = TimeZoneSettings('UTC');
+
   /// [textCharset] utf8 | latin1 | ascii
+  ///
   /// [host] ip, dns or unix socket
+  ///
+  /// [timeZone] = default = TimeZoneSettings('UTC')
   CoreConnection(
     this.user, {
     this.host = 'localhost',
@@ -163,7 +166,10 @@ class CoreConnection implements ConnectionInterface {
     this.connectionName,
     this.textCharset = 'utf8',
     this.allowAttemptToReconnect = false,
+    TimeZoneSettings? timeZone,
   }) {
+    this.timeZone = timeZone ?? TimeZoneSettings('UTC');
+    serverInfo.timeZone = this.timeZone;
     typeConverter =
         TypeConverter(textCharset, serverInfo, connectionName: connectionName);
     _init();
@@ -186,6 +192,7 @@ class CoreConnection implements ConnectionInterface {
       connectionName: settings.connectionName,
       textCharset: settings.textCharset,
       allowAttemptToReconnect: settings.allowAttemptToReconnect,
+      timeZone: settings.timeZone,
     );
   }
 
@@ -212,11 +219,10 @@ class CoreConnection implements ConnectionInterface {
     _initParams = <String, dynamic>{
       "user": user,
       "database": database,
-      // applicationName não funciona com postgre menor que 8.2
-      // "application_name": applicationName,
       "replication": replication,
+      "timezone": this.timeZone.value
     };
-
+    // applicationName não funciona com postgre menor que 8.2
     if (applicationName != null) {
       _initParams['application_name'] = applicationName;
     }
@@ -253,23 +259,6 @@ class CoreConnection implements ConnectionInterface {
   }
 
   Future<CoreConnection> connect({int? delayBeforeConnect}) async {
-    //print('CoreConnection@connect start');
-    // reset all
-    // hasConnected = false;
-    // _sendQueryQueue = Queue<Query>();
-    // _query = null;
-    // prepareStatementId = 0;
-    // _transactionQueue = Queue<TransactionContext>();
-    // _currentTransaction = null;
-    // _transactionId = 0;
-    // transactionState = TransactionState.unknown;
-    // _transaction_status = null;
-    // _notifications = StreamController<dynamic>.broadcast();
-    // _notices = StreamController<dynamic>.broadcast();
-    // lastServerNotice = null;
-    // scramAuthenticator = null;
-    // reset all
-
     _connectionState = ConnectionState.socketConnecting;
 
     if (delayBeforeConnect != null) {
@@ -1292,7 +1281,7 @@ class CoreConnection implements ConnectionInterface {
         serverInfo.standardConformingStrings = value;
         break;
       case 'timezone':
-        serverInfo.timeZone = value;
+        serverInfo.timeZone.value = value;
         break;
     }
   }

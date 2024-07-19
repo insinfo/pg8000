@@ -30,3 +30,6 @@ a.exe
 pack_unpack_benchmark.exe
 siamweb.sql
 teste_concorrencia.dart
+
+.idea/
+timezones.txt

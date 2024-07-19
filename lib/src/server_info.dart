@@ -1,3 +1,5 @@
+import 'package:dargres/src/timezone_settings.dart';
+
 class ServerInfo {
   Map<String, dynamic> rawParams = <String, dynamic>{};
 
@@ -26,7 +28,7 @@ class ServerInfo {
   String? standardConformingStrings;
 
   /// localtime
-  String? timeZone;
+  TimeZoneSettings timeZone = TimeZoneSettings('UTC');
 
   ServerInfo({
     this.clientEncoding,
@@ -37,7 +39,7 @@ class ServerInfo {
     this.serverVersion,
     this.sessionAuthorization,
     this.standardConformingStrings,
-    this.timeZone,
+    required this.timeZone,
   });
 
   Map<String, dynamic> toMap() {

@@ -1,3 +1,5 @@
+import 'package:dargres/src/timezone_settings.dart';
+
 import 'exceptions.dart';
 import 'ssl_context.dart';
 
@@ -20,6 +22,8 @@ class ConnectionSettings {
 
   Duration connectionTimeout = Duration(seconds: 180);
 
+  TimeZoneSettings? timeZone;
+
   String sourceAddress = '';
 
   bool tcpKeepalive = false;
@@ -27,6 +31,7 @@ class ConnectionSettings {
   String? applicationName;
   dynamic replication;
   String? connectionName;
+
   /// Allow reconnection attempt if PostgreSQL was restarted
   bool allowAttemptToReconnect = false;
   ConnectionSettings({
@@ -45,6 +50,7 @@ class ConnectionSettings {
     this.connectionName = null,
     this.textCharset = 'utf8',
     this.allowAttemptToReconnect = false,
+    this.timeZone,
   });
 
   ConnectionSettings clone() {
@@ -64,6 +70,7 @@ class ConnectionSettings {
       connectionName: connectionName,
       textCharset: textCharset,
       allowAttemptToReconnect: allowAttemptToReconnect,
+      timeZone: timeZone,
     );
   }
 
