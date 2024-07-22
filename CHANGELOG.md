@@ -68,3 +68,7 @@ queries Example:
 ## 3.1.0
 
 - **Breaking change**: decode timestamp without timezone as local DateTime and decode timestamp with timezone respecting the timezone defined in the connection
+
+## 3.1.1
+
+- add more flexibility on how timestamp and timestaptz types are decoded by adding flags to the TimeZoneSettings 

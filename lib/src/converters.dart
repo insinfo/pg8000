@@ -10,8 +10,7 @@ import 'exceptions.dart';
 import 'server_info.dart';
 import 'utils/utils.dart';
 
-import 'package:dargres/src/timezone_settings.dart' as tz;
-//import 'dependencies/timezone/timezone.dart' as tz;
+import 'dependencies/timezone/pg_timezone.dart' as tz;
 
 //enum
 // class ArrayState {
@@ -391,30 +390,24 @@ class TypeConverter {
 
   dynamic date_in(value) {
     if (value == 'infinity' || value == '-infinity' || value == null) {
-      // throw PostgresqlException(
-      //   'A timestamp value "$value", cannot be represented '
-      //   'as a Dart object.',
-      // );
       return null;
     }
-    // var formattedValue = value;
-    // formattedValue = formattedValue + 'T00:00:00Z';
+    if (serverInfo.timeZone.forceDecodeDateAsUTC) {
+      return DateTime.tryParse(value + 'T00:00:00Z');
+    }
     return DateTime.tryParse(value);
   }
 
   /// convert de posgresql timestamp para dart DateTime
   dynamic timestamp_in(value) {
     if (value == 'infinity' || value == '-infinity' || value == null) {
-      // throw PostgresqlException(
-      //   'A timestamp value "$value", cannot be represented '
-      //   'as a Dart object.',
-      // );
       return null;
     }
+    if (serverInfo.timeZone.forceDecodeTimestampAsUTC) {
+      return DateTime.tryParse(value + 'Z');
+    }
 
-    final formattedValue = value;
-    final dateTime = DateTime.tryParse(formattedValue);
-    return dateTime;
+    return DateTime.tryParse(value);
   }
 
   /// Decodes PostgreSql text [value] into a [DateTime] instance.
@@ -431,10 +424,6 @@ class TypeConverter {
     // capable of creating DateTimes for a non-local time zone.
 
     if (value == 'infinity' || value == '-infinity' || value == null) {
-      // throw PostgresqlException(
-      //   'A timestamp value "$value", cannot be represented '
-      //   'as a Dart object.',
-      // );
       return null;
     }
     var formattedValue = value;
@@ -442,13 +431,12 @@ class TypeConverter {
     //the value to a string, i.e. your_column::text.
     // formattedValue = formattedValue.substring(0, formattedValue.length - 3);
     // PG will return the timestamp in the connection's timezone. The resulting DateTime.parse will handle accordingly.
-
+    if (serverInfo.timeZone.forceDecodeTimestamptzAsUTC) {
+      return DateTime.tryParse(formattedValue); //+= 'Z'
+    }
     var datetime = DateTime.tryParse(formattedValue);
 
-    if (datetime != null ) {
-      // serverInfo.timeZone == UTC | America/Sao_Paulo | ...
-      //final tzLocation = tz.getLocation(serverInfo.timeZone!);
-
+    if (datetime != null) {
       final pgTimeZone = serverInfo.timeZone.value.toLowerCase();
 
       final tzLocations = tz.timeZoneDatabase.locations.entries
