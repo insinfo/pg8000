@@ -8,7 +8,7 @@ const String tzDataDefaultFilename = 'latest.tzf';
 final _UTC = Location('UTC', [minTime], [0], [TimeZone.UTC]);
 
 final _database = LocationDatabase();
-late Location _local;
+Location _local = _UTC;
 
 /// Global TimeZone database
 LocationDatabase get timeZoneDatabase => _database;
@@ -48,7 +48,7 @@ void initializeDatabase(List<int> rawData) async {
   for (final l in tzdbDeserialize(rawData)) {
     // final name = l.name;
     // final transitionAt = l.transitionAt;
-    // final transitionZone = l.transitionZone; 
+    // final transitionZone = l.transitionZone;
     // final zones = l.zones.map((z) => "TimeZone(${z.offset}, isDst: ${z.isDst}, abbreviation: '${z.abbreviation}')");
     // final contents = ''' '$name': Location('$name',[${transitionAt.join(',')}],[${transitionZone.join(',')}],[${zones.join(',')}]), ''';
     // await  file.writeAsString(contents,  mode: FileMode.append);

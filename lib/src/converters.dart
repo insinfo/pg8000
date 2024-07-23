@@ -11,6 +11,7 @@ import 'server_info.dart';
 import 'utils/utils.dart';
 
 import 'dependencies/timezone/pg_timezone.dart' as tz;
+import 'dependencies/timezone/timezone.dart' as tzenv;
 
 //enum
 // class ArrayState {
@@ -454,6 +455,9 @@ class TypeConverter {
       }
 
       final tzLocation = tzLocations.first;
+      //define location for TZDateTime.toLocal()
+      tzenv.setLocalLocation(tzLocation);
+
       final offsetInMilliseconds = tzLocation.currentTimeZone.offset;
 
       // Conversion of milliseconds to hours
