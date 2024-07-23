@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dargres/dargres.dart';
 //import 'package:dargres/src/core.dart';
 import 'package:test/test.dart';
@@ -10,6 +12,14 @@ void main() {
       port: 5432,
       password: 's1sadm1n',
       textCharset: 'utf8');
+  if (Platform.isWindows) {
+    con = CoreConnection('dart',
+        database: 'sistemas',
+        host: 'localhost',
+        port: 5435,
+        password: 'dart',
+        textCharset: 'utf8');
+  }
 
   setUp(() async {
     await con.connect();
@@ -127,7 +137,7 @@ inet_array_type, xml_array_type, varbit_array_type, oid_type, oid_array_type
   B'10'::bit(1), true, '(0,0),(1,1)', E'\\336\\255\\276\\357'::bytea,'A', '192.168.100.128/25', '<(1,1),2>' ,'2022-12-19', 5, 2.3, 500.50 ,'192.168.0.0/24'
 ,2, 4, 8, '3 days 04:05:06'::interval, '{"key":"value"}', '{"key":"value"}', '(2,3),(4,7)', '(2,3),(4,7)','08:00:2b:01:02:03' , 
 '25',
-'(2,3),(4,7)', '(2,3)', '(2,3),(4,7)', 'text example', '19:50', '2022-12-21T15:52:00', '2022-12-21T15:52:00', '14:24', 'fat & rat',
+'(2,3),(4,7)', '(2,3)', '(2,3),(4,7)', 'text example', '19:50', '2022-12-21T15:52:00', '2024-07-23 10:04:55.10298-03', '14:24', 'fat & rat',
 'a fat'::tsvector, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',  (X'A'), 'varchar test', 
 '<?xml version="1.0"?><book><title>Manual</title><chapter>...</chapter></book>',
 '123'::xid, '{"varchar","type",null}', '{1,2,null}', '{true,false,null}', '{"\\336\\255\\276\\357",null}', '{a,b}', '{"2022-12-19"}', '{10.5,1.3}',
@@ -209,7 +219,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
           await con.querySimple(r'''SELECT date_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, DateTime);
       expect(res, [
-        [DateTime(2022, 12, 19)]
+        [DateTime.parse('2022-12-19 00:00:00.000Z')]
       ]);
     });
     test('SELECT decimal/numeric type', () async {
@@ -279,8 +289,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
     test('SELECT json type', () async {
       var res =
           await con.querySimple(r'''SELECT json_type FROM postgresql_types;''');
-      expect(res.first.first.runtimeType.toString(),
-          '_InternalLinkedHashMap<String, dynamic>');
+      expect(res.first.first is Map, true);
       expect(res, [
         [
           {"key": "value"}
@@ -290,8 +299,7 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
     test('SELECT jsonb type', () async {
       var res = await con
           .querySimple(r'''SELECT jsonb_type FROM postgresql_types;''');
-      expect(res.first.first.runtimeType.toString(),
-          '_InternalLinkedHashMap<String, dynamic>');
+      expect(res.first.first is Map, true);
       expect(res, [
         [
           {"key": "value"}
@@ -362,14 +370,15 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
       var res = await con
           .querySimple(r'''SELECT timestamp_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, DateTime);
-      expect(res.first.first, DateTime(2022, 12, 21, 15, 52, 00));
+      expect(res.first.first, DateTime.parse('2022-12-21 15:52:00.000Z'));
     });
-    // test('test SELECT timestamptz type', () async {
-    //   var res = await con.querySimple(
-    //       r'''SELECT timestamptz_type FROM postgresql_types;''');
-    //   expect(res.first.first.runtimeType, DateTime);
-    //   expect(res.first.first, DateTime.parse('2022-12-21 18:52:00.000Z'));
-    // });
+    test('test SELECT timestamptz type', () async {
+      var res = await con
+          .querySimple(r'''SELECT timestamptz_type FROM postgresql_types;''');
+      //print('res ${res.first.first} | ${DateTime.parse('2024-07-23 10:04:55.10298-03')}');
+      expect(res.first.first.runtimeType, DateTime); //DateTime
+      expect(res.first.first, DateTime.parse('2024-07-23 10:04:55.10298-03'));
+    });
     // test('test SELECT timetz type', () async {
     //   var res = await con
     //       .querySimple(r'''SELECT timetz_type FROM postgresql_types;''');
@@ -643,8 +652,8 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
           [2, 'São Paulo', 'José das Coves']);
       final id = re.first.first;
 
-      var results = await con
-          .queryUnnamed(r'SELECT * FROM temp_location WHERE id=$1 limit 1;',[id]);
+      var results = await con.queryUnnamed(
+          r'SELECT * FROM temp_location WHERE id=$1 limit 1;', [id]);
       expect(results, [
         [2, 'São Paulo', 'José das Coves']
       ]);
