@@ -15,7 +15,7 @@ void main() {
 
   group('TypeConverter', () {
     test('test_date_in', () {
-      expect(typeConverter.date_in('2022-03-02'), equals(DateTime(2022, 3, 2)));
+      expect(typeConverter.date_in('2022-03-02'), equals(DateTime.parse('2022-03-02 00:00:00.000Z')));
     });
 
     test('test_null_out', () {
