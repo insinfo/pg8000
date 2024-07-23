@@ -71,4 +71,4 @@ queries Example:
 
 ## 3.1.1
 
-- add more flexibility on how timestamp and timestaptz types are decoded by adding flags to the TimeZoneSettings 
+- add more flexibility on how date, timestamp and timestaptz types are decoded by adding flags to the TimeZoneSettings 
