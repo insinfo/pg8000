@@ -9,5 +9,4 @@ environment:
 dependencies:
   dargres:
     path: ../..
-  postgres_fork:
-    path: ../../../postgres_fork
+  postgres_fork: any

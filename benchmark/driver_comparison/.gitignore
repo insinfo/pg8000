@@ -4,4 +4,3 @@ results/*
 !results/.gitkeep
 !results/comparison-rows10000-postfix.json
 !results/comparison-rows10000-aot.json
-!pubspec.lock
