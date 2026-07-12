@@ -1,112 +1,98 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:convert/convert.dart';
-
-import 'package:enough_convert/enough_convert.dart';
-
-import 'dependencies/charcode/ascii.dart';
-import 'exceptions.dart';
 import 'server_info.dart';
+import 'utils/pg_datetime_codec.dart';
 import 'utils/utils.dart';
+import 'utils/crypto.dart';
+import 'utils/windows_1252.dart';
 
-import 'dependencies/timezone/pg_timezone.dart' as tz;
-import 'dependencies/timezone/timezone.dart' as tzenv;
-
-//enum
-// class ArrayState {
-//   static const InString = 1;
-//   static const InEscape = 2;
-//   static const InValue = 3;
-//   static const Out = 4;
-// }
-
-enum ArrayState { InString, InEscape, InValue, Out }
+enum ArrayState { inString, inEscape, inValue, out }
 
 class TypeConverter {
-  static const ANY_ARRAY = 2277;
-  static const BIGINT_ARRAY = 1016;
-  static const BOOLEAN = 16;
-  static const BOOLEAN_ARRAY = 1000;
-  static const BYTES = 17;
-  static const BYTES_ARRAY = 1001;
-  static const CHAR = 1042;
-  static const CHAR_ARRAY = 1014;
-  static const CIDR = 650;
-  static const CIDR_ARRAY = 651;
-  static const CSTRING = 2275;
-  static const CSTRING_ARRAY = 1263;
-  static const DATE = 1082;
-  static const DATE_ARRAY = 1182;
-  static const FLOAT = 701;
+  static const anyArray = 2277;
+  static const bigintArray = 1016;
+  static const boolean = 16;
+  static const booleanArray = 1000;
+  static const bytes = 17;
+  static const bytesArray = 1001;
+  static const char = 1042;
+  static const charArray = 1014;
+  static const cidr = 650;
+  static const cidrArray = 651;
+  static const cstring = 2275;
+  static const cstringArray = 1263;
+  static const date = 1082;
+  static const dateArray = 1182;
+  static const float = 701;
 // double precision
-  static const FLOAT8 = 701;
-  static const FLOAT_ARRAY = 1022;
-  static const INET = 869;
-  static const INET_ARRAY = 1041;
-  static const INT2VECTOR = 22;
+  static const float8 = 701;
+  static const floatArray = 1022;
+  static const inet = 869;
+  static const inetArray = 1041;
+  static const int2vector = 22;
 
 //Work only for smaller precision
-  static const NUMERIC = 1700;
+  static const numeric = 1700;
 
 // INT2 smallint
-  static const SMALLINT = 21;
+  static const smallint = 21;
 // _INT4
-  static const INTEGER = 23;
+  static const integer = 23;
 // _INT8
-  static const BIGINT = 20;
+  static const bigint = 20;
 
 // real
-  static const FLOAT4 = 700;
-  static const REAL = 700;
+  static const float4 = 700;
+  static const real = 700;
 
-  static const REAL_ARRAY = 1021;
-  static const INTEGER_ARRAY = 1007;
-  static const INTERVAL = 1186;
-  static const INTERVAL_ARRAY = 1187;
-  static const OID = 26;
-  static const JSON = 114;
-  static const JSON_ARRAY = 199;
-  static const JSONB = 3802;
-  static const JSONB_ARRAY = 3807;
-  static const MACADDR = 829;
-  static const MONEY = 790;
-  static const MONEY_ARRAY = 791;
-  static const NAME = 19;
-  static const NAME_ARRAY = 1003;
+  static const realArray = 1021;
+  static const integerArray = 1007;
+  static const interval = 1186;
+  static const intervalArray = 1187;
+  static const oid = 26;
+  static const json = 114;
+  static const jsonArray = 199;
+  static const jsonb = 3802;
+  static const jsonbArray = 3807;
+  static const macaddr = 829;
+  static const money = 790;
+  static const moneyArray = 791;
+  static const name = 19;
+  static const nameArray = 1003;
 
-  static const NUMERIC_ARRAY = 1231;
-  static const NULLTYPE = -1;
-//const OID = 26;
-  static const POINT = 600;
+  static const numericArray = 1231;
+  static const nulltype = -1;
+//const oid = 26;
+  static const point = 600;
 
-  static const SMALLINT_ARRAY = 1005;
-  static const SMALLINT_VECTOR = 22;
+  static const smallintArray = 1005;
+  static const smallintVector = 22;
 //const STRING = 1043;
-  static const TEXT = 25;
-  static const TEXT_ARRAY = 1009;
-  static const TIME = 1083;
-  static const TIME_ARRAY = 1183;
-  static const TIMESTAMP = 1114;
-  static const TIMESTAMP_ARRAY = 1115;
+  static const text = 25;
+  static const textArray = 1009;
+  static const time = 1083;
+  static const timeArray = 1183;
+  static const timestamp = 1114;
+  static const timestampArray = 1115;
   //_TIMESTAMPZ
-  static const TIMESTAMPTZ = 1184;
-  static const TIMESTAMPTZ_ARRAY = 1185;
-  static const UNKNOWN = 705;
-  static const UUID_TYPE = 2950;
-  static const UUID_ARRAY = 2951;
-  static const VARCHAR = 1043;
-  static const VARCHAR_ARRAY = 1015;
-  static const XID = 28;
+  static const timestamptz = 1184;
+  static const timestamptzArray = 1185;
+  static const unknown = 705;
+  static const uuidType = 2950;
+  static const uuidArray = 2951;
+  static const varchar = 1043;
+  static const varcharArray = 1015;
+  static const xid = 28;
 
 // ** é o símbolo para exponenciação. em python
-  static const MIN_INT2 = -32768; //-(2**15);
-  static const MAX_INT2 = 32768; //2**15;
-  static const MIN_INT4 = -2147483648; //-(2**31)
-  static const MAX_INT4 = 2147483648; // 2**31;
-  static const MIN_INT8 = -9223372036854775808; //-(2**63)
+  static const minInt2 = -32768; //-(2**15);
+  static const maxInt2 = 32768; //2**15;
+  static const minInt4 = -2147483648; //-(2**31)
+  static const maxInt4 = 2147483648; // 2**31;
+  static const minInt8 = -9223372036854775808; //-(2**63)
 // 2**63; -1 para ser compativel com dart => pow(2, 63) - 1
-  static const MAX_INT8 = 9223372036854775807;
+  static const maxInt8 = 9223372036854775807;
 
   String? connectionName;
   ServerInfo serverInfo;
@@ -114,54 +100,42 @@ class TypeConverter {
 
   TypeConverter(this.textCharset, this.serverInfo, {this.connectionName});
 
-  bool bool_in(data) {
+  bool boolIn(data) {
     return data == "t";
   }
 
   /// Dart bool to postgresql
-  String bool_out(data) {
-    //return "true" if v else "false"
+  String boolOut(data) {
     return data != 0 && data != null && data != false && data != ''
         ? "true"
         : "false";
-
-    // return data == 't'
-    //     ? true
-    //     : data == 'f'
-    //         ? false
-    //         : null;
   }
 
   /// encode bytearray Uint8List to posgresql
-  dynamic bytes_out(v) {
-    return "\\x" + hex.encode(v);
-    // v.hex();
-  }
-
-  dynamic pg_interval_out(v) {
-    return String.fromCharCodes(v);
+  dynamic bytesOut(v) {
+    return '\\x${hexEncode(v)}';
   }
 
   /// Dart String to postgresql
-  dynamic string_out(v) {
+  dynamic stringOut(v) {
     return v;
   }
 
-  dynamic null_out(v) {
+  dynamic nullOut(v) {
     return null;
   }
 
   /// Dart double to postgresql
-  dynamic float_out(n) {
+  dynamic floatOut(n) {
     if (n.isNaN) return "'nan'";
     if (n == double.infinity) return "'infinity'";
     if (n == double.negativeInfinity) return "'-infinity'";
     return n.toString();
   }
 
-  // numeric_out
+  // numericOut
   /// dart num type to postgresql numeric type
-  dynamic numeric_out(n) {
+  dynamic numericOut(n) {
     if (n.isNaN) return "'nan'";
     if (n == double.infinity) return "'infinity'";
     if (n == double.negativeInfinity) return "'-infinity'";
@@ -169,26 +143,25 @@ class TypeConverter {
   }
 
   /// Dart int to postgresql
-  dynamic int_out(n) {
-    //return int.parse(v);
+  dynamic intOut(n) {
     if (n.isNaN) return "'nan'";
     return n.toString();
   }
 
-  array_out(List ar) {
+  arrayOut(Iterable ar) {
     var result = [];
     for (var v in ar) {
-      var val;
+      Object? val;
       if (v == null) {
         val = "NULL";
       } else if (v is Map) {
-        val = array_string_escape(json_out(v));
+        val = arrayStringEscape(jsonOut(v));
       } else if (v is Uint8List) {
-        val = '"\\${bytes_out(v)}"';
-      } else if (v is List) {
-        val = array_out(v);
+        val = '"\\${bytesOut(v)}"';
+      } else if (v is Iterable) {
+        val = arrayOut(v);
       } else if (v is String) {
-        val = array_string_escape(v);
+        val = arrayStringEscape(v);
       } else {
         val = makeParam(v);
       }
@@ -196,14 +169,14 @@ class TypeConverter {
       result.add(val);
     }
 
-    return "{" + result.join(',') + "}";
+    return '{${result.join(',')}}';
   }
 
-  dynamic array_string_escape(String inputString) {
+  dynamic arrayStringEscape(String inputString) {
     var v = inputString.split('');
 
     var cs = [];
-    var val;
+    String val;
     for (var c in v) {
       if (c == "\\") {
         cs.add("\\");
@@ -213,7 +186,7 @@ class TypeConverter {
       cs.add(c);
     }
     val = cs.join();
-    if (val.length == 0 ||
+    if (val.isEmpty ||
         val == "NULL" ||
         Utils.stringContainsSpace(val) ||
         Utils.stringContains(val, ["{", "}", ",", "\\"])) {
@@ -222,48 +195,34 @@ class TypeConverter {
     return val;
   }
 
-  /// Dart date to postgresql
-  String date_out(DateTime v) {
-    return v.toIso8601String();
-  }
-
   /// Dart DateTime to postgresql
-  String datetime_out(DateTime v) {
-    // if v.tzinfo is None:
-    //     return v.isoformat()
-    // else:
-    //     return v.astimezone(Timezone.utc).isoformat();
+  String dateTimeOut(DateTime v) {
     return v.toIso8601String();
-  }
-
-  /// Dart enum to postgresql
-  dynamic enum_out(v) {
-    return v.value;
   }
 
   /// Dart Map to postgresql
-  String json_out(v) {
+  String jsonOut(v) {
     return jsonEncode(v);
   }
 
-  List<T?>? _parse_array<T>(String data, Function adapter) {
-    var state = ArrayState.Out;
+  List<T?>? _parseArray<T>(String data, Function adapter) {
+    var state = ArrayState.out;
     var stack = [[]];
     var val = [];
     var dataSplit = data.split('');
 
     for (var c in dataSplit) {
-      if (state == ArrayState.InValue) {
+      if (state == ArrayState.inValue) {
         if (['}', ','].contains(c)) {
           var value = val.join();
           stack[stack.length - 1].add(value == "NULL" ? null : adapter(value));
-          state = ArrayState.Out;
+          state = ArrayState.out;
         } else {
           val.add(c);
         }
       }
 
-      if (state == ArrayState.Out) {
+      if (state == ArrayState.out) {
         if (c == '{') {
           var a = [];
           stack[stack.length - 1].add(a);
@@ -274,23 +233,23 @@ class TypeConverter {
           //pass;
         } else if (c == '"') {
           val = [];
-          state = ArrayState.InString;
+          state = ArrayState.inString;
         } else {
           val = [c];
-          state = ArrayState.InValue;
+          state = ArrayState.inValue;
         }
-      } else if (state == ArrayState.InString) {
+      } else if (state == ArrayState.inString) {
         if (c == '"') {
           stack[stack.length - 1].add(adapter(val.join()));
-          state = ArrayState.Out;
+          state = ArrayState.out;
         } else if (c == "\\") {
-          state = ArrayState.InEscape;
+          state = ArrayState.inEscape;
         } else {
           val.add(c);
         }
-      } else if (state == ArrayState.InEscape) {
+      } else if (state == ArrayState.inEscape) {
         val.add(c);
-        state = ArrayState.InString;
+        state = ArrayState.inString;
       }
     }
     var result = stack[0][0];
@@ -300,805 +259,271 @@ class TypeConverter {
     return null;
   }
 
-  dynamic bool_array_in(dynamic data) {
-    return _parse_array<bool?>(data, bool_in);
+  dynamic boolArrayIn(dynamic data) {
+    return _parseArray<bool?>(data, boolIn);
   }
 
-  dynamic bytes_array_in(dynamic data) {
-    return _parse_array<Uint8List?>(data, bytes_in);
+  dynamic bytesArrayIn(dynamic data) {
+    return _parseArray<Uint8List?>(data, bytesIn);
   }
 
-  /// Returns List<int>
-  dynamic int_array_in(dynamic data) {
-    return _parse_array<int?>(data, int_in);
+  /// Returns `List<int>`.
+  dynamic intArrayIn(dynamic data) {
+    return _parseArray<int?>(data, intIn);
   }
 
-  dynamic vector_in(String data) {
+  dynamic vectorIn(String data) {
     var vals = data.split('');
     return vals.map((v) => int.parse(v)).toList();
-    //return [int(v) for v in data.split()]
   }
 
-  /// Returns List<String>
-  List<String?>? string_array_in(dynamic data) {
-    return _parse_array<String?>(data, string_in);
+  /// Returns `List<String>`.
+  List<String?>? stringArrayIn(dynamic data) {
+    return _parseArray<String?>(data, stringIn);
   }
 
-  /// Returns List<String>
-  List<String?>? interval_array_in(dynamic data) {
-    return _parse_array<String?>(data, string_in);
+  /// Returns `List<String>`.
+  List<String?>? intervalArrayIn(dynamic data) {
+    return _parseArray<String?>(data, stringIn);
   }
 
-  List<DateTime?>? date_array_in(dynamic data) {
-    return _parse_array<DateTime?>(data, date_in);
+  List<DateTime?>? dateArrayIn(dynamic data) {
+    return _parseArray<DateTime?>(data, dateIn);
   }
 
-  List<double?>? float_array_in(dynamic data) {
-    return _parse_array<double?>(data, float_in);
+  List<double?>? floatArrayIn(dynamic data) {
+    return _parseArray<double?>(data, floatIn);
   }
 
-  List<double?>? numeric_array_in(dynamic data) {
-    return _parse_array<double?>(data, float_in);
+  List<double?>? numericArrayIn(dynamic data) {
+    return _parseArray<double?>(data, floatIn);
   }
 
-  List<Map?>? json_array_in(dynamic data) {
-    return _parse_array<Map?>(data, json_in);
+  List<Map?>? jsonArrayIn(dynamic data) {
+    return _parseArray<Map?>(data, jsonIn);
   }
 
-  List<String?>? time_array_in(dynamic data) {
-    return _parse_array<String?>(data, string_in);
+  List<String?>? timeArrayIn(dynamic data) {
+    return _parseArray<String?>(data, stringIn);
   }
 
-  List<DateTime?>? timestamp_array_in(dynamic data) {
-    return _parse_array<DateTime?>(data, timestamp_in);
+  List<DateTime?>? timestampArrayIn(dynamic data) {
+    return _parseArray<DateTime?>(data, timestampIn);
   }
 
-  List<DateTime?>? timestamptz_array_in(dynamic data) {
-    return _parse_array<DateTime?>(data, timestamptz_in);
+  List<DateTime?>? timestampTzArrayIn(dynamic data) {
+    return _parseArray<DateTime?>(data, timestampTzIn);
   }
 
   /// [data] String
-  /// return List<int>
-  dynamic bytes_in(data) {
-    //if (data is String) {
+  /// Returns `List<int>`.
+  dynamic bytesIn(data) {
     final bytesString = data.substring(2); //data.replaceFirst("\\x", '');
-    return hex.decode(bytesString);
-    //}
-    //return data;
+    return hexDecode(bytesString);
   }
 
-  dynamic string_in(data) {
+  dynamic stringIn(data) {
     return data;
   }
 
-  dynamic int_in(data) {
+  dynamic intIn(data) {
     return int.parse(data);
   }
 
-  dynamic float_in(data) {
+  dynamic floatIn(data) {
     return double.parse(data);
   }
 
-  dynamic numeric_in(data) {
-    // return Decimal(data);
+  dynamic numericIn(data) {
     return double.parse(data);
   }
 
 //decode _JSON and _JSONB
-  dynamic json_in(data) {
+  dynamic jsonIn(data) {
     return jsonDecode(data);
   }
 
-  dynamic date_in(value) {
-    if (value == 'infinity' || value == '-infinity' || value == null) {
-      return null;
-    }
-    if (serverInfo.timeZone.forceDecodeDateAsUTC) {
-      return DateTime.tryParse(value + 'T00:00:00Z');
-    }
-    return DateTime.tryParse(value);
-  }
+  DateTime? dateIn(String? value) => PgDateTimeCodec.decodeDateText(
+        value,
+        timeZone: serverInfo.timeZone,
+      );
 
   /// convert de posgresql timestamp para dart DateTime
-  dynamic timestamp_in(value) {
-    if (value == 'infinity' || value == '-infinity' || value == null) {
-      return null;
-    }
-    if (serverInfo.timeZone.forceDecodeTimestampAsUTC) {
-      return DateTime.tryParse(value + 'Z');
-    }
-
-    return DateTime.tryParse(value);
-  }
+  DateTime? timestampIn(String? value) =>
+      PgDateTimeCodec.decodeTimestampText(
+        value,
+        timeZone: serverInfo.timeZone,
+      );
 
   /// Decodes PostgreSql text [value] into a [DateTime] instance.
-  ///
-  ///
-  /// TODO use https://github.com/AKushWarrior/instant/tree/master/lib/src
-  /// https://github.com/AKushWarrior/instant/blob/master/lib/src/timezone.dart
-  DateTime? timestamptz_in(String? value) {
-    // Note: it will convert it to local time (via [DateTime.toLocal])
-    // Built in Dart dates can either be local time or utc. Which means that the
-    // the postgresql timezone parameter for the connection must be either set
-    // to UTC, or the local time of the server on which the client is running.
-    // This restriction could be relaxed by using a more advanced date library
-    // capable of creating DateTimes for a non-local time zone.
+  DateTime? timestampTzIn(String? value) =>
+      PgDateTimeCodec.decodeTimestamptzText(
+        value,
+        timeZone: serverInfo.timeZone,
+      );
 
-    if (value == 'infinity' || value == '-infinity' || value == null) {
-      return null;
-    }
-    var formattedValue = value;
-    //if infinity values are required, rewrite the sql query to cast
-    //the value to a string, i.e. your_column::text.
-    // formattedValue = formattedValue.substring(0, formattedValue.length - 3);
-    // PG will return the timestamp in the connection's timezone. The resulting DateTime.parse will handle accordingly.
-    if (serverInfo.timeZone.forceDecodeTimestamptzAsUTC) {
-      return DateTime.tryParse(formattedValue); //+= 'Z'
-    }
-    var datetime = DateTime.tryParse(formattedValue);
-
-    if (datetime != null) {
-      final pgTimeZone = serverInfo.timeZone.value.toLowerCase();
-
-      final tzLocations = tz.timeZoneDatabase.locations.entries
-          .where((e) {
-            return (e.key.toLowerCase() == pgTimeZone ||
-                e.value.currentTimeZone.abbreviation.toLowerCase() ==
-                    pgTimeZone);
-          })
-          .map((e) => e.value)
-          .toList();
-
-      if (tzLocations.isEmpty) {
-        throw tz.LocationNotFoundException(
-            'Location with the name "$pgTimeZone" doesn\'t exist');
-      }
-
-      final tzLocation = tzLocations.first;
-      //define location for TZDateTime.toLocal()
-      tzenv.setLocalLocation(tzLocation);
-
-      final offsetInMilliseconds = tzLocation.currentTimeZone.offset;
-
-      // Conversion of milliseconds to hours
-      final double offset = offsetInMilliseconds / (1000 * 60 * 60);
-
-      if (offset < 0) {
-        final subtr = Duration(
-            hours: offset.abs().truncate(),
-            minutes: ((offset.abs() % 1) * 60).round());
-        datetime = datetime.subtract(subtr);
-        final specificDate = tz.TZDateTime(
-            tzLocation,
-            datetime.year,
-            datetime.month,
-            datetime.day,
-            datetime.hour,
-            datetime.minute,
-            datetime.second,
-            datetime.millisecond,
-            datetime.microsecond);
-        return specificDate;
-      } else if (offset > 0) {
-        final addr = Duration(
-            hours: offset.truncate(), minutes: ((offset % 1) * 60).round());
-        datetime = datetime.add(addr);
-        final specificDate = tz.TZDateTime(
-            tzLocation,
-            datetime.year,
-            datetime.month,
-            datetime.day,
-            datetime.hour,
-            datetime.minute,
-            datetime.second,
-            datetime.millisecond,
-            datetime.microsecond);
-        return specificDate;
-      }
-    }
-
-    return datetime;
-  }
-
-  dynamic interval_in(value) {
+  dynamic intervalIn(value) {
     return value.toString();
-  }
-
-  String encodeNumber(num n) {
-    if (n.isNaN) return "'nan'";
-    if (n == double.infinity) return "'infinity'";
-    if (n == double.negativeInfinity) return "'-infinity'";
-    return n.toString();
-  }
-
-  /// Map of characters to escape.
-  static const escapes = const {
-    "'": r"\'",
-    "\r": r"\r",
-    "\n": r"\n",
-    r"\": r"\\",
-    "\t": r"\t",
-    "\b": r"\b",
-    "\f": r"\f",
-    "\u0000": "",
-  };
-
-  /// Characters that will be escapes.
-  static const escapePattern = r"'\r\n\\\t\b\f\u0000"; //detect unsupported null
-  final _escapeRegExp = RegExp("[$escapePattern]");
-
-  String encodeString(String? s) {
-    if (s == null) return ' null ';
-    var escaped = s.replaceAllMapped(_escapeRegExp, _escape);
-    return " E'$escaped' ";
-  }
-
-  String _escape(Match m) => escapes[m[0]]!;
-
-  String encodeArray(Iterable value, {String? pgType}) {
-    final buf = StringBuffer('array[');
-    for (final v in value) {
-      if (buf.length > 6) buf.write(',');
-      buf.write(encodeValueDefault(v));
-    }
-    buf.write(']');
-    if (pgType != null)
-      buf
-        ..write('::')
-        ..write(pgType)
-        ..write('[]');
-    return buf.toString();
-  }
-
-  String encodeDateTime(DateTime? datetime, {bool isDateOnly: false}) {
-    if (datetime == null) return 'null';
-
-    var string = datetime.toIso8601String();
-
-    if (isDateOnly) {
-      string = string.split("T").first;
-    } else {
-      // ISO8601 UTC times already carry Z, but local times carry no timezone info
-      // so this code will append it.
-      if (!datetime.isUtc) {
-        var timezoneHourOffset = datetime.timeZoneOffset.inHours;
-        var timezoneMinuteOffset = datetime.timeZoneOffset.inMinutes % 60;
-
-        // Note that the sign is stripped via abs() and appended later.
-        var hourComponent = timezoneHourOffset.abs().toString().padLeft(2, "0");
-        var minuteComponent =
-            timezoneMinuteOffset.abs().toString().padLeft(2, "0");
-
-        if (timezoneHourOffset >= 0) {
-          hourComponent = "+${hourComponent}";
-        } else {
-          hourComponent = "-${hourComponent}";
-        }
-
-        var timezoneString = [hourComponent, minuteComponent].join(":");
-        string = [string, timezoneString].join("");
-      }
-    }
-
-    if (string.substring(0, 1) == "-") {
-      // Postgresql uses a BC suffix for dates rather than the negative prefix returned by
-      // dart's ISO8601 date string.
-      string = string.substring(1) + " BC";
-    } else if (string.substring(0, 1) == "+") {
-      // Postgresql doesn't allow leading + signs for 6 digit dates. Strip it out.
-      string = string.substring(1);
-    }
-
-    return "'${string}'";
-  }
-
-  String encodeJson(value) => encodeString(jsonEncode(value));
-
-  // Unspecified type name. Use default type mapping.
-  String encodeValueDefault(value) {
-    if (value == null) return 'null';
-    if (value is num) return encodeNumber(value);
-    if (value is String) return encodeString(value);
-    if (value is DateTime) return encodeDateTime(value, isDateOnly: false);
-    if (value is bool || value is BigInt) return value.toString();
-    if (value is Iterable) return encodeArray(value);
-    return encodeJson(value);
-  }
-
-  PostgresqlException _error(String msg) {
-    return PostgresqlException(msg, connectionName: connectionName);
   }
 
   /// convert from dart types to posgresql types
   /// based in python pg8000
-  // TODO implement ip4_address type and money
-  // https://github.com/dart-protocol/ip/tree/master/lib/src/ip
-  // https://pub.dev/packages/money
   encodeValuePg8000(dynamic value, Type type) {
     if (value is DateTime) {
-      return datetime_out(value);
+      return dateTimeOut(value);
     } else if (value is bool) {
-      return bool_out(value);
+      return boolOut(value);
     } else if (value is Uint8List) {
-      return bytes_out(value);
+      return bytesOut(value);
     } else if (value is Map) {
-      return json_out(value);
+      return jsonOut(value);
     } else if (value is double) {
-      return float_out(value);
+      return floatOut(value);
     } else if (value == null) {
-      return null_out(value);
+      return nullOut(value);
     } else if (value is String) {
-      return string_out(value);
+      return stringOut(value);
     } else if (value is int) {
-      return int_out(value);
+      return intOut(value);
     } else if (value is BigInt) {
       return value.toString();
     } else if (value is num) {
-      return numeric_out(value);
+      return numericOut(value);
     } else if (value is Iterable) {
-      //TODO checar isso
-      return array_out(value as List);
-    } else if (value is List<Object>) {
-      return array_out(value);
+      return arrayOut(value);
     } else {
       return value.toString();
     }
-    //Iterable<int>
-    //if (value is Iterable) return encodeArray(value);
-  }
-
-  /// convert from dart types to posgresql types
-  /// based on tomyeh implementation
-  // based on https://github.com/tomyeh/postgresql
-  encodeValueTomyeh(dynamic value, String? type) {
-    if (type == null) return encodeValueDefault(value);
-    if (value == null) return 'null';
-
-    switch (type) {
-      case 'text':
-      case 'string':
-        return encodeString(value.toString());
-
-      case 'integer':
-      case 'smallint':
-      case 'bigint':
-      case 'serial':
-      case 'bigserial':
-      case 'int':
-        if (value is int || value is BigInt) return encodeNumber(value);
-        break;
-
-      case 'real':
-      case 'double':
-      case 'num':
-      case 'number':
-      case 'numeric':
-      case 'decimal': //Work only for smaller precision
-        if (value is num || value is BigInt) return encodeNumber(value);
-        break;
-
-      case 'boolean':
-      case 'bool':
-        if (value is bool) return value.toString();
-        break;
-
-      case 'timestamp':
-      case 'timestamptz':
-      case 'datetime':
-        if (value is DateTime) return encodeDateTime(value, isDateOnly: false);
-        break;
-
-      case 'date':
-        if (value is DateTime) return encodeDateTime(value, isDateOnly: true);
-        break;
-
-      case 'json':
-      case 'jsonb':
-        return encodeJson(value);
-
-      case 'array':
-        if (value is Iterable) return encodeArray(value);
-        break;
-
-      case 'bytea':
-        if (value is Iterable<int>) return encodeBytea(value);
-        break;
-
-      default:
-        if (type.endsWith('_array'))
-          return encodeArray(value, pgType: type.substring(0, type.length - 6));
-
-        final t = type.toLowerCase(); //backward compatible
-        if (t != type)
-          return encodeValueTomyeh(
-            value,
-            t,
-          );
-
-        throw _error('Unknown type name: $type.');
-    }
-
-    throw _error('Invalid runtime type and type modifier: '
-        '${value.runtimeType} to $type.');
-  }
-
-// See http://www.postgresql.org/docs/9.0/static/sql-syntax-lexical.html#SQL-SYNTAX-STRINGS-ESCAPE
-  String encodeBytea(Iterable<int> value) {
-    //var b64String = ...;
-    //return " decode('$b64String', 'base64') ";
-
-    throw _error('bytea encoding not implemented. Pull requests welcome ;)');
   }
 
   /// decode PostgreSQL data type to dart
   /// based on python pg8000
   /// https://github.com/dart-protocol/ip/tree/master/lib/src/ip
   decodeValuePg8000(String value, int pgType) {
-    //print('decodeValuePg8000 pgType: $pgType');
     switch (pgType) {
-      case BIGINT:
-        return int_in(value); // int8
-      case BIGINT_ARRAY:
-        return int_array_in(value); // int8[]
-      case BOOLEAN:
-        return bool_in(value); // bool
-      case BOOLEAN_ARRAY:
-        return bool_array_in(value); // bool[]
-      case BYTES:
-        return bytes_in(value); // bytea
-      case BYTES_ARRAY:
-        return bytes_array_in(value); // bytea[]
-      case CHAR:
-        return string_in(value); // char
-      case CHAR_ARRAY:
-        return string_array_in(value); // char[]
-      case CIDR_ARRAY:
-        //return cidr_array_in(value); // cidr[]
-        return string_array_in(value);
-      case CSTRING:
-        return string_in(value); // cstring
-      case CSTRING_ARRAY:
-        return string_array_in(value); // cstring[]
-      case DATE:
-        return date_in(value); // date
-      case DATE_ARRAY:
-        return date_array_in(value); // date[]
+      case bigint:
+        return intIn(value); // int8
+      case bigintArray:
+        return intArrayIn(value); // int8[]
+      case boolean:
+        return boolIn(value); // bool
+      case booleanArray:
+        return boolArrayIn(value); // bool[]
+      case bytes:
+        return bytesIn(value); // bytea
+      case bytesArray:
+        return bytesArrayIn(value); // bytea[]
+      case char:
+        return stringIn(value); // char
+      case charArray:
+        return stringArrayIn(value); // char[]
+      case cidrArray:
+        return stringArrayIn(value);
+      case cstring:
+        return stringIn(value); // cstring
+      case cstringArray:
+        return stringArrayIn(value); // cstring[]
+      case date:
+        return dateIn(value); // date
+      case dateArray:
+        return dateArrayIn(value); // date[]
 
-      case FLOAT:
-        return float_in(value); // _FLOAT8 _FLOAT4 701
-      case FLOAT_ARRAY:
-        return float_array_in(value); // float8[]
+      case float:
+        return floatIn(value); // _FLOAT8 _FLOAT4 701
+      case floatArray:
+        return floatArrayIn(value); // float8[]
 
-      case INET:
-        // return inet_in(value); // inet
+      case inet:
         return value;
-      case INET_ARRAY:
-        //return inet_array_in(value); // inet[]
-        return string_array_in(value);
-      case INTEGER:
-        return int_in(value); //INT4 INT2 BIGINT
-      case INTEGER_ARRAY:
-        return int_array_in(value); // int4[]
-      case JSON:
-        return json_in(value); // json
-      case JSON_ARRAY:
-        return json_array_in(value); // json[]
+      case inetArray:
+        return stringArrayIn(value);
+      case integer:
+        return intIn(value); //INT4 INT2 bigint
+      case integerArray:
+        return intArrayIn(value); // int4[]
+      case json:
+        return jsonIn(value); // json
+      case jsonArray:
+        return jsonArrayIn(value); // json[]
 
-      case JSONB:
-        return json_in(value); // jsonb
-      case JSONB_ARRAY:
-        return json_array_in(value); // jsonb[]
+      case jsonb:
+        return jsonIn(value); // jsonb
+      case jsonbArray:
+        return jsonArrayIn(value); // jsonb[]
 
-      case MACADDR:
-        return string_in(value); // MACADDR type
-      case MONEY:
-        return string_in(value); // money
-      case MONEY_ARRAY:
-        return string_array_in(value); // money[]
-      case NAME:
-        return string_in(value); // name
-      case NAME_ARRAY:
-        return string_array_in(value); // name[]
-      case NUMERIC:
-        return numeric_in(value); // numeric
-      case NUMERIC_ARRAY:
-        return numeric_array_in(value); // numeric[]
-      case OID:
-        return int_in(value); // oid
-      case _OID_ARRAY:
-        return int_array_in(value); // oid[]
-      case INTERVAL:
-        return interval_in(value); // interval
-      case INTERVAL_ARRAY:
-        return interval_array_in(value); // interval[]
-      case REAL:
-        return float_in(value); // float4
-      case REAL_ARRAY:
-        return float_array_in(value); // float4[]
-      case SMALLINT:
-        return int_in(value); // int2
-      case SMALLINT_ARRAY:
-        return int_array_in(value); // int2[]
-      case SMALLINT_VECTOR:
-        return vector_in(value); // int2vector
-      case TEXT:
-        return string_in(value); // text
-      case TEXT_ARRAY:
-        return string_array_in(value); // text[]
-      case TIME:
-        //return time_in(value); // time
-        return string_in(value);
-      case TIME_ARRAY:
-        return time_array_in(value); // time[]
-      case INTERVAL:
-        return interval_in(value); // interval
-      case TIMESTAMP:
-        return timestamp_in(value); // timestamp
-      case TIMESTAMP_ARRAY:
-        return timestamp_array_in(value); // timestamp
-      case TIMESTAMPTZ:
-        return timestamptz_in(value); // timestamptz
-      case TIMESTAMPTZ_ARRAY:
-        return timestamptz_array_in(value); // timestamptz
-      case UNKNOWN:
-        return string_in(value); // unknown
-      case UUID_ARRAY:
-        return string_array_in(value); // uuid[]
-      case UUID_TYPE:
-        //return uuid_in(value); // uuid
-        return string_in(value);
-      case VARCHAR:
-        return string_in(value); // varchar
-      case VARCHAR_ARRAY:
-        return string_array_in(value); // varchar[]
-      case XID:
-        return int_in(value); // xid
-      case _VARBIT:
-        return string_in(value); // varbit(10)
-      case _VARBIT_ARRAY:
-        return string_array_in(value); // varbit[]
+      case macaddr:
+        return stringIn(value); // macaddr type
+      case money:
+        return stringIn(value); // money
+      case moneyArray:
+        return stringArrayIn(value); // money[]
+      case name:
+        return stringIn(value); // name
+      case nameArray:
+        return stringArrayIn(value); // name[]
+      case numeric:
+        return numericIn(value); // numeric
+      case numericArray:
+        return numericArrayIn(value); // numeric[]
+      case oid:
+        return intIn(value); // oid
+      case _oidArray:
+        return intArrayIn(value); // oid[]
+      case interval:
+        return intervalIn(value); // interval
+      case intervalArray:
+        return intervalArrayIn(value); // interval[]
+      case real:
+        return floatIn(value); // float4
+      case realArray:
+        return floatArrayIn(value); // float4[]
+      case smallint:
+        return intIn(value); // int2
+      case smallintArray:
+        return intArrayIn(value); // int2[]
+      case smallintVector:
+        return vectorIn(value); // int2vector
+      case text:
+        return stringIn(value); // text
+      case textArray:
+        return stringArrayIn(value); // text[]
+      case time:
+        return stringIn(value);
+      case timeArray:
+        return timeArrayIn(value); // time[]
+      case timestamp:
+        return timestampIn(value); // timestamp
+      case timestampArray:
+        return timestampArrayIn(value); // timestamp
+      case timestamptz:
+        return timestampTzIn(value); // timestamptz
+      case timestamptzArray:
+        return timestampTzArrayIn(value); // timestamptz
+      case unknown:
+        return stringIn(value); // unknown
+      case uuidArray:
+        return stringArrayIn(value); // uuid[]
+      case uuidType:
+        return stringIn(value);
+      case varchar:
+        return stringIn(value); // varchar
+      case varcharArray:
+        return stringArrayIn(value); // varchar[]
+      case xid:
+        return intIn(value); // xid
+      case _varbit:
+        return stringIn(value); // varbit(10)
+      case _varbitArray:
+        return stringArrayIn(value); // varbit[]
       default:
         return value;
     }
   }
 
-  /// based on https://github.com/tomyeh/postgresql
-  ///
-  decodeValueTomyeh(String value, int pgType) {
-    switch (pgType) {
-      case BOOLEAN:
-        return value == 't';
-
-      case SMALLINT: // smallint
-      case INTEGER: // integer
-      case BIGINT: // bigint
-        return int.parse(value);
-
-      case _FLOAT4: // real
-      case _FLOAT8: // double precision
-      case _NUMERIC: //Work only for smaller precision
-        return double.parse(value);
-
-      case TIMESTAMP:
-      case TIMESTAMPTZ:
-      case DATE:
-        return decodeDateTime(value, pgType);
-
-      case JSON:
-      case JSONB:
-        return jsonDecode(value);
-
-      //TODO binary bytea
-
-      // Not implemented yet - return a string.
-      //case _MONEY:
-      //case _TIMETZ:
-      //case _TIME:
-      //case _INTERVAL:
-
-      default:
-        final scalarType = _arrayTypes[pgType];
-        if (scalarType != null) return decodeArray(value, scalarType);
-
-        // Return a string for unknown types. The end user can parse this.
-        return value;
-    }
-  }
-
-  static const _arrayTypes = {
-    _BIT_ARRAY: _BIT,
-    _BOOL_ARRAY: _BOOL,
-    _BPCHAR_ARRAY: _BPCHAR,
-    _BYTEA_ARRAY: _BYTEA,
-    _CHAR_ARRAY: _CHAR,
-    _DATE_ARRAY: _DATE,
-    _FLOAT4_ARRAY: _FLOAT4,
-    _FLOAT8_ARRAY: _FLOAT8,
-    _INT2_ARRAY: _INT2,
-    _INT4_ARRAY: _INT4,
-    _INT8_ARRAY: _INT8,
-    _INTERVAL_ARRAY: _INTERVAL,
-    _JSON_ARRAY: _JSON,
-    _JSONB_ARRAY: _JSONB,
-    _MONEY_ARRAY: _MONEY,
-    _NAME_ARRAY: _NAME,
-    _NUMERIC_ARRAY: _NUMERIC,
-    _OID_ARRAY: _OID,
-    _TEXT_ARRAY: _TEXT,
-    _TIME_ARRAY: _TIME,
-    _TIMESTAMP_ARRAY: _TIMESTAMP,
-    _TIMESTAMPZ_ARRAY: _TIMESTAMPZ,
-    _TIMETZ_ARRAY: _TIMETZ,
-    _UUID_ARRAY: _UUID,
-    _VARBIT_ARRAY: _VARBIT,
-    _VARCHAR_ARRAY: _VARCHAR,
-    _XML_ARRAY: _XML,
-  };
-
-  /// Constants for postgresql datatypes
-  /// Ref: https://jdbc.postgresql.org/development/privateapi/constant-values.html
-  /// Also: select typname, typcategory, typelem, typarray from pg_type where typname LIKE '%int%'
-  static const int _BIT = 1560,
-      _BIT_ARRAY = 1561,
-      _BOOL = 16,
-      _BOOL_ARRAY = 1000,
-      //  _BOX = 603,
-      _BPCHAR = 1042,
-      _BPCHAR_ARRAY = 1014,
-      _BYTEA = 17,
-      _BYTEA_ARRAY = 1001,
-      _CHAR = 18,
-      _CHAR_ARRAY = 1002,
-      _DATE = 1082,
-      _DATE_ARRAY = 1182,
-      _FLOAT4 = 700,
-      _FLOAT4_ARRAY = 1021,
-      _FLOAT8 = 701,
-      _FLOAT8_ARRAY = 1022,
-      _INT2 = 21,
-      _INT2_ARRAY = 1005,
-      _INT4 = 23,
-      _INT4_ARRAY = 1007,
-      _INT8 = 20,
-      _INT8_ARRAY = 1016,
-      _INTERVAL = 1186,
-      _INTERVAL_ARRAY = 1187,
-      _JSON = 114,
-      _JSON_ARRAY = 199,
-      _JSONB = 3802,
-      _JSONB_ARRAY = 3807,
-      _MONEY = 790,
-      _MONEY_ARRAY = 791,
-      _NAME = 19,
-      _NAME_ARRAY = 1003,
-      _NUMERIC = 1700,
-      _NUMERIC_ARRAY = 1231,
-      _OID = 26,
-      _OID_ARRAY = 1028,
-      //_POINT = 600,
-      _TEXT = 25,
-      _TEXT_ARRAY = 1009,
-      _TIME = 1083,
-      _TIME_ARRAY = 1183,
-      _TIMESTAMP = 1114,
-      _TIMESTAMP_ARRAY = 1115,
-      _TIMESTAMPZ = 1184,
-      _TIMESTAMPZ_ARRAY = 1185,
-      _TIMETZ = 1266,
-      _TIMETZ_ARRAY = 1270,
-      //_UNSPECIFIED = 0,
-      _UUID = 2950,
-      _UUID_ARRAY = 2951,
-      _VARBIT = 1562,
-      _VARBIT_ARRAY = 1563,
-      _VARCHAR = 1043,
-      _VARCHAR_ARRAY = 1015,
-      //_VOID = 2278,
-      _XML = 142,
-      _XML_ARRAY = 143;
-
-  /// Decodes [value] into a [DateTime] instance.
-  ///
-  /// Note: it will convert it to local time (via [DateTime.toLocal])
-  DateTime? decodeDateTime(String value, int pgType) {
-    // Built in Dart dates can either be local time or utc. Which means that the
-    // the postgresql timezone parameter for the connection must be either set
-    // to UTC, or the local time of the server on which the client is running.
-    // This restriction could be relaxed by using a more advanced date library
-    // capable of creating DateTimes for a non-local time zone.
-
-    if (value == 'infinity' || value == '-infinity') return null;
-    // throw _error('A timestamp value "$value", cannot be represented '
-    //     'as a Dart object.');
-    //if infinity values are required, rewrite the sql query to cast
-    //the value to a string, i.e. your_column::text.
-
-    var formattedValue = value;
-
-    // Postgresql uses a BC suffix rather than a negative prefix as in ISO8601.
-    if (value.endsWith(' BC'))
-      formattedValue = '-' + value.substring(0, value.length - 3);
-
-    if (pgType == TIMESTAMP) {
-      formattedValue; // += 'Z';
-    } else if (pgType == TIMESTAMPTZ) {
-      // PG will return the timestamp in the connection's timezone. The resulting DateTime.parse will handle accordingly.
-      formattedValue += 'Z';
-    } else if (pgType == DATE) {
-      formattedValue; // = formattedValue + 'T00:00:00Z';
-    }
-    //.toLocal()
-    return DateTime.tryParse(formattedValue);
-  }
-
-  /// Decodes an array value, [value]. Each item of it is [pgType].
-  decodeArray(String value, int pgType) {
-    final len = value.length - 2;
-    assert(
-        value.codeUnitAt(0) == $lbrace && value.codeUnitAt(len + 1) == $rbrace);
-    if (len <= 0) return [];
-    value = value.substring(1, len + 1);
-
-    if (const {TEXT, CHAR, VARCHAR, NAME}.contains(pgType)) {
-      final result = [];
-      for (int i = 0; i < len; ++i) {
-        if (value.codeUnitAt(i) == $quot) {
-          final buf = <int>[];
-          for (;;) {
-            final cc = value.codeUnitAt(++i);
-            if (cc == $quot) {
-              result.add(new String.fromCharCodes(buf));
-              ++i;
-              assert(i >= len || value.codeUnitAt(i) == $comma);
-              break;
-            }
-            if (cc == $backslash)
-              buf.add(value.codeUnitAt(++i));
-            else
-              buf.add(cc);
-          }
-        } else {
-          //not quoted
-          for (int j = i;; ++j) {
-            if (j >= len || value.codeUnitAt(j) == $comma) {
-              final v = value.substring(i, j);
-              result.add(v == 'NULL' ? null : v);
-              i = j;
-              break;
-            }
-          }
-        }
-      }
-      return result;
-    }
-
-    if (const {JSON, JSONB}.contains(pgType)) return jsonDecode('[$value]');
-
-    final result = [];
-    for (final v in value.split(','))
-      result.add(v == 'NULL' ? null : decodeValueTomyeh(v, pgType));
-    return result;
-  }
+  static const int _oidArray = 1028, _varbit = 1562, _varbitArray = 1563;
 
   dynamic makeParam(dynamic value) {
-    try {
-      //func = PY_TYPES[value.runtimeType];
-      //return encodeValue(value, null);
-      return encodeValuePg8000(value, value.runtimeType);
-    } catch (e) {
-      print('make_param error $e');
-    }
-
-    return string_out(value);
-  }
-
-  /// convert prepared params from dart types to posgresql types
-  List makeParams(List values) {
-    var results = [];
-    for (var v in values) {
-      results.add(makeParam(v));
-    }
-    return results;
+    return encodeValuePg8000(value, value.runtimeType);
   }
 
   /// PostgreSQL encodings:
@@ -1109,7 +534,7 @@ class TypeConverter {
   ///
   /// Commented out encodings don't require a name change between PostgreSQL and
   /// Python.  If the py side is None, then the encoding isn't supported.
-  final PG_PY_ENCODINGS = <String, dynamic>{
+  final pgPyEncodings = <String, dynamic>{
     // Not supported:
     "mule_internal": null,
     "euc_tw": null,
@@ -1167,8 +592,7 @@ class TypeConverter {
       case 'iso-8859-1':
         return latin1.decode(codeUnits);
       case 'win1252':
-        //WIN1250	Windows CP1250 | cp1252
-        return Windows1252Codec(allowInvalid: false).decode(codeUnits);
+        return decodeWindows1252(codeUnits);
       default:
         return utf8.decode(codeUnits, allowMalformed: true);
     }
@@ -1185,8 +609,7 @@ class TypeConverter {
       case 'iso-8859-1':
         return latin1.encode(codeUnits);
       case 'win1252':
-        //WIN1250	Windows CP1250 | cp1252
-        return Windows1252Codec(allowInvalid: false).encode(codeUnits);
+        return encodeWindows1252(codeUnits);
       default:
         return utf8.encode(codeUnits);
     }

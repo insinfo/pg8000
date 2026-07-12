@@ -1,20 +1,20 @@
 import 'unormdata.dart';
 import 'utils.dart';
 
-final _DEFAULT_FEATURE = [null, 0, Map<int, Object>()];
-final _CACHE_THRESHOLD = 10;
-final _SBase = 0xAC00;
-final _LBase = 0x1100;
-final _VBase = 0x1161;
-final _TBase = 0x11A7;
-final _LCount = 19;
-final _VCount = 21;
-final _TCount = 28;
-final _NCount = _VCount * _TCount;
-final _SCount = _LCount * _NCount;
+final _defaultFeature = <Object?>[null, 0, <int, Object>{}];
+const _cacheThreshold = 10;
+const _sBase = 0xAC00;
+const _lBase = 0x1100;
+const _vBase = 0x1161;
+const _tBase = 0x11A7;
+const _lCount = 19;
+const _vCount = 21;
+const _tCount = 28;
+const _nCount = _vCount * _tCount;
+const _sCount = _lCount * _nCount;
 
 bool _initialized = false;
-final Map<int, UChar> _cache = Map();
+final Map<int, UChar> _cache = <int, UChar>{};
 final List<int> _cacheCounter = <int>[];
 
 void initUCharCache() {
@@ -34,7 +34,7 @@ UChar _fromCache(NextFunc? next, int cp, bool needFeature) {
   if (ret == null) {
     ret = next!(cp, needFeature);
     if (ret.feature != null &&
-        ++_cacheCounter[(cp >> 8) & 0xFF] > _CACHE_THRESHOLD) {
+        ++_cacheCounter[(cp >> 8) & 0xFF] > _cacheThreshold) {
       _cache[cp] = ret;
     }
   }
@@ -45,7 +45,7 @@ UChar _fromData(NextFunc? next, int cp, bool needFeature) {
   final hash = cp & 0xFF00;
   final dunit = unormdata[hash] ?? {};
   final f = dunit[cp];
-  return f != null ? UChar(cp, f) : UChar(cp, _DEFAULT_FEATURE);
+  return f != null ? UChar(cp, f) : UChar(cp, _defaultFeature);
 }
 
 UChar _fromCpOnly(NextFunc? next, int cp, bool needFeature) {
@@ -53,36 +53,36 @@ UChar _fromCpOnly(NextFunc? next, int cp, bool needFeature) {
 }
 
 UChar _fromRuleBasedJamo(NextFunc? next, int cp, bool needFeature) {
-  if (cp < _LBase ||
-      (_LBase + _LCount <= cp && cp < _SBase) ||
-      (_SBase + _SCount < cp)) {
+  if (cp < _lBase ||
+      (_lBase + _lCount <= cp && cp < _sBase) ||
+      (_sBase + _sCount < cp)) {
     return next!(cp, needFeature);
   }
-  if (_LBase <= cp && cp < _LBase + _LCount) {
-    final c = Map<int, Object>();
-    final base = (cp - _LBase) * _VCount;
-    for (int i = 0; i < _VCount; ++i) {
-      c[_VBase + i] = _SBase + _TCount * (i + base);
+  if (_lBase <= cp && cp < _lBase + _lCount) {
+    final c = <int, Object>{};
+    final base = (cp - _lBase) * _vCount;
+    for (int i = 0; i < _vCount; ++i) {
+      c[_vBase + i] = _sBase + _tCount * (i + base);
     }
     return UChar(cp, [null, null, c]);
   }
 
-  final SIndex = cp - _SBase;
-  final TIndex = SIndex % _TCount;
+  final sIndex = cp - _sBase;
+  final tIndex = sIndex % _tCount;
   final feature = List<dynamic>.filled(3, null, growable: false);
-  if (TIndex != 0) {
-    feature[0] = [_SBase + SIndex - TIndex, _TBase + TIndex];
+  if (tIndex != 0) {
+    feature[0] = [_sBase + sIndex - tIndex, _tBase + tIndex];
     feature[1] = null;
     feature[2] = null;
   } else {
     feature[0] = [
-      _LBase + (SIndex / _NCount).floor(),
-      _VBase + ((SIndex % _NCount) / _TCount).floor()
+      _lBase + (sIndex / _nCount).floor(),
+      _vBase + ((sIndex % _nCount) / _tCount).floor()
     ];
     feature[1] = null;
-    feature[2] = Map<int, int>();
-    for (int j = 1; j < _TCount; ++j) {
-      feature[2][_TBase + j] = cp + j;
+    feature[2] = <int, int>{};
+    for (int j = 1; j < _tCount; ++j) {
+      feature[2][_tBase + j] = cp + j;
     }
   }
   return UChar(cp, feature);
@@ -90,7 +90,7 @@ UChar _fromRuleBasedJamo(NextFunc? next, int cp, bool needFeature) {
 
 UChar _fromCpFilter(NextFunc? next, int cp, bool needFeature) {
   return cp < 60 || 13311 < cp && cp < 42607
-      ? UChar(cp, _DEFAULT_FEATURE)
+      ? UChar(cp, _defaultFeature)
       : next!(cp, needFeature);
 }
 
@@ -111,17 +111,17 @@ class UChar {
   UChar(this.codepoint, this._feature);
 
   void prepareFeature() {
-    if (this.feature == null) {
-      this._feature = UChar.fromCharCode(this.codepoint, true)!.feature;
+    if (feature == null) {
+      _feature = UChar.fromCharCode(codepoint, true)!.feature;
     }
   }
 
   @override
   String toString() {
-    if (this.codepoint < 0x10000) {
-      return String.fromCharCode(this.codepoint);
+    if (codepoint < 0x10000) {
+      return String.fromCharCode(codepoint);
     } else {
-      final x = this.codepoint - 0x10000;
+      final x = codepoint - 0x10000;
       return String.fromCharCodes(
           [(x / 0x400).floor() + 0xD800, x % 0x400 + 0xDC00]);
     }
@@ -129,7 +129,7 @@ class UChar {
 
   List<int>? getDecomp() {
     prepareFeature();
-    return _feature![0] as List<int>? ?? null;
+    return _feature![0] as List<int>?;
   }
 
   bool isCompatibility() {

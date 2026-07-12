@@ -1,10 +1,9 @@
 import 'dart:convert';
 
-import 'package:crypto/crypto.dart';
-
 import '../../sasl_scram_exception.dart';
 import '../../utils/typed_data.dart';
 import '../../utils/sasl.dart';
+import '../../../../utils/crypto.dart';
 import '../auth.dart';
 import '../sasl_authenticator.dart';
 import 'steps/client_first.dart';
@@ -32,7 +31,7 @@ class ScramMechanism extends SaslMechanism {
     }
 
     final r =
-        randomStringGenerator.generate(SaslAuthenticator.DefaultNonceLength);
+        randomStringGenerator.generate(SaslAuthenticator.defaultNonceLength);
 
     final nonce = 'r=$r';
 

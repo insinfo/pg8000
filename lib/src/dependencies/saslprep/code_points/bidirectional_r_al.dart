@@ -1,6 +1,6 @@
 /// D.1 Characters with bidirectional property "R" or "AL"
 /// https://tools.ietf.org/html/rfc3454#appendix-D.1
-var bidirectional_r_al = [
+final bidirectionalRAl = [
   0x05be,
   0x05c0,
   0x05c3,

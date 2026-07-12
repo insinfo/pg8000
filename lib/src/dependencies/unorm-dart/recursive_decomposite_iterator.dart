@@ -8,7 +8,7 @@ class RecursiveDecompositeIterator implements UnormIterator {
   List<UChar> _resultBuffer;
 
   RecursiveDecompositeIterator(this._iterator, this._canonical)
-      : this._resultBuffer = [];
+      : _resultBuffer = [];
 
   List<UChar> _recursiveDecompose(bool canonical, UChar uchar) {
     final decomp = uchar.getDecomp();

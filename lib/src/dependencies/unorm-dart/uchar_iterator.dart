@@ -9,7 +9,7 @@ class UCharIterator implements UnormIterator {
 
   @override
   UChar? next() {
-    if (_str != null && this._cursor < this._str!.length) {
+    if (_str != null && _cursor < _str!.length) {
       int cp = _str!.codeUnitAt(_cursor++);
       int d;
       if (UChar.isHighSurrogate(cp) &&

@@ -1,6 +1,6 @@
 /// D.2 Characters with bidirectional property "L"
 /// https://tools.ietf.org/html/rfc3454#appendix-D.2
-var bidirectional_l = [
+final bidirectionalL = [
   for (var i = 0x0041; i <= 0x005a; i++) i,
   for (var i = 0x0061; i <= 0x007a; i++) i,
   0x00aa,

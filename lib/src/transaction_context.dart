@@ -4,42 +4,59 @@ import 'package:dargres/dargres.dart';
 
 class TransactionContext implements ExecutionContext {
   final int transactionId;
-  // fila de querys a serem executadas nesta transação
   final Queue<Query> sendQueryQueue = Queue<Query>();
 
   final CoreConnection connection;
+  bool _active = true;
+  Object? terminalError;
+
+  bool get isActive => _active;
 
   TransactionContext(this.transactionId, this.connection);
 
-  /// Execute a sql command e return affected row count
+  void markCompleted() {
+    _active = false;
+  }
+
+  void markFailed(Object error) {
+    terminalError = error;
+    _active = false;
+  }
+
+  void _ensureActive() {
+    if (!_active) {
+      throw StateError(terminalError == null
+          ? 'Transaction $transactionId is already complete.'
+          : 'Transaction $transactionId failed: $terminalError');
+    }
+  }
+
+  /// Executes SQL through the simple-query protocol and returns affected rows.
   /// Example: con.execute('select * from crud_teste.pessoas limit 1')
+  @override
   Future<int> execute(String sql) async {
-    //print('TransactionContext@execute start');
+    _ensureActive();
     var query = Query(sql);
-    query.state = QueryState.init;
     query.queryType = QueryType.simple;
     _enqueueQuery(query);
     await query.stream.toList();
-    //print('TransactionContext@execute end');
     return query.rowsAffected.value;
   }
 
-  /// execute a simple query whitout prepared statement
-  /// this use a simple Postgresql Protocol
+  /// Streams a query through PostgreSQL's simple-query protocol.
   /// https://www.postgresql.org/docs/current/protocol-flow.html#id-1.10.6.7.4
+  @override
   Future<Results> querySimple(String sql) async {
-   // print('TransactionContext@querySimple start');
     var r = await querySimpleAsStream(sql);
     return r.toResults();
   }
 
-  /// execute a simple query whitout prepared statement
-  /// this use a simple Postgresql Protocol
+  /// Executes a query through PostgreSQL's simple-query protocol.
+  @override
   Future<ResultStream> querySimpleAsStream(String sql) async {
-    //print('TransactionContext@querySimpleAsStream start');
+    _ensureActive();
     try {
       Query query = Query(sql);
-      query.state = QueryState.init;
       query.queryType = QueryType.simple;
       _enqueueQuery(query);
       return query.stream;
@@ -48,40 +65,148 @@ class TransactionContext implements ExecutionContext {
     }
   }
 
-  /// execute a prepared unnamed statement
-  /// [params] parameters can be a list or a map,
-  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
-  /// it has to be a List, if different it has to be a Map
-  /// return Query prepared with statementName for execute with (executeStatement) method
+  @override
+  Future<List<Map<String, dynamic>>> queryMaps(
+    String sql, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  }) async {
+    _ensureActive();
+    final maps = <Map<String, dynamic>>[];
+    await connection.executeDirect(sql, params, (query) {
+      query.dataRowSink = (bytes, offset, length) {
+        maps.add(query.resultSchema!
+            .decodeMap(bytes, baseOffset: offset, messageLength: length));
+      };
+    },
+        transaction: this,
+        placeholderIdentifier: placeholderIdentifier,
+        requireBinaryResults: requireBinaryResults);
+    return maps;
+  }
+
+  @override
+  Future<List<T>> queryTyped<T>(
+    String sql,
+    T Function(RowView row) mapper, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  }) async {
+    _ensureActive();
+    final entities = <T>[];
+    List<Object?>? values;
+    RowView? view;
+    await connection.executeDirect(sql, params, (query) {
+      query.dataRowSink = (bytes, offset, length) {
+        final schema = query.resultSchema!;
+        values ??=
+            List<Object?>.filled(schema.columnCount, null, growable: false);
+        schema.decodeRowInto(bytes, values!,
+            baseOffset: offset, messageLength: length);
+        view ??= RowView(values!, schema.nameToIndex);
+        entities.add(mapper(view!));
+      };
+    },
+        transaction: this,
+        placeholderIdentifier: placeholderIdentifier,
+        requireBinaryResults: requireBinaryResults);
+    return entities;
+  }
+
+  @override
+  Future<void> queryEach(
+    String sql,
+    void Function(RowView row) onRow, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  }) async {
+    _ensureActive();
+    List<Object?>? values;
+    RowView? view;
+    await connection.executeDirect(sql, params, (query) {
+      query.dataRowSink = (bytes, offset, length) {
+        final schema = query.resultSchema!;
+        values ??=
+            List<Object?>.filled(schema.columnCount, null, growable: false);
+        schema.decodeRowInto(bytes, values!,
+            baseOffset: offset, messageLength: length);
+        view ??= RowView(values!, schema.nameToIndex);
+        onRow(view!);
+      };
+    },
+        transaction: this,
+        placeholderIdentifier: placeholderIdentifier,
+        requireBinaryResults: requireBinaryResults);
+  }
+
+  @override
+  Future<Results> queryCached(
+    String sql, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  }) async {
+    _ensureActive();
+    final rows = <Row>[];
+    final query = await connection.executeDirect(sql, params, (query) {
+      query.dataRowSink = (bytes, offset, length) {
+        final schema = query.resultSchema!;
+        rows.add(Row(
+            schema.decodeRow(bytes, baseOffset: offset, messageLength: length),
+            schema.columns,
+            schema.nameToIndex));
+      };
+    },
+        transaction: this,
+        placeholderIdentifier: placeholderIdentifier,
+        requireBinaryResults: requireBinaryResults);
+    return Results(rows, query.rowsAffected);
+  }
+
+  /// Executes an uncached unnamed extended-protocol statement.
+  ///
+  /// [params] must be a `List` for PostgreSQL or question-mark placeholders
+  /// and a `Map` for named placeholders.
   /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
+  @override
   Future<Results> queryUnnamed(String sql, dynamic params,
       {PlaceholderIdentifier placeholderIdentifier =
           PlaceholderIdentifier.pgDefault,
       bool isDeallocate = false}) async {
-   // print('TransactionContext@queryUnnamed start');
-    var statement = await prepareStatement(sql, params,
-        isUnamedStatement: true, placeholderIdentifier: placeholderIdentifier);
-    return executeStatement(statement, isDeallocate: isDeallocate);
+    _ensureActive();
+    return connection.executeDirectResults(sql, params,
+        transaction: this,
+        placeholderIdentifier: placeholderIdentifier,
+        useCache: false);
   }
 
+  @override
   Future<Results> queryNamed(String sql, dynamic params,
       {PlaceholderIdentifier placeholderIdentifier =
           PlaceholderIdentifier.pgDefault,
       bool isDeallocate = false}) async {
-    //print('TransactionContext@queryNamed start');
-    var statement = await prepareStatement(sql, params,
-        isUnamedStatement: false, placeholderIdentifier: placeholderIdentifier);
-    return executeStatement(statement, isDeallocate: isDeallocate);
+    _ensureActive();
+    return connection.executeDirectResults(sql, params,
+        transaction: this,
+        placeholderIdentifier: placeholderIdentifier,
+        useCache: !isDeallocate);
   }
 
-  /// prepare statement
-  /// [params] parameters can be a list or a map,
-  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
-  /// it has to be a List, if different it has to be a Map
-  /// return Query prepared with statementName for execute with (executeStatement) method
+  /// Prepares a server-side statement.
+  ///
+  /// [params] must be a `List` for PostgreSQL or question-mark placeholders
+  /// and a `Map` for named placeholders.
   /// Example:
-  /// var statement = await prepareStatement('SELECT * FROM table LIMIT $1', [0]);
-  /// var result await executeStatement(statement);
+  /// final statement = await prepareStatement('SELECT * FROM table LIMIT $1', [0]);
+  /// final result = await executeStatement(statement);
+  @override
   Future<Query> prepareStatement(
     String sql,
     dynamic params, {
@@ -89,11 +214,9 @@ class TransactionContext implements ExecutionContext {
     PlaceholderIdentifier placeholderIdentifier =
         PlaceholderIdentifier.pgDefault,
   }) async {
-   // print('TransactionContext@prepareStatement start');
-    
+    _ensureActive();
     var query = Query(sql,
         params: params, placeholderIdentifier: placeholderIdentifier);
-    query.state = QueryState.init;
     query.transactionContext = this;
     query.error = null;
     query.isUnamedStatement = isUnamedStatement;
@@ -102,38 +225,27 @@ class TransactionContext implements ExecutionContext {
     query.queryType = QueryType.prepareStatement;
     _enqueueQuery(query);
     await query.stream.toList();
-   // print('TransactionContext@prepareStatement end');
-    //cria uma copia
-    // var newQuery = query.clone();
-    // return newQuery;
     return query;
-   
   }
 
-  /// run Query prepared with (prepareStatement) method and return List of Row
+  /// Executes a statement created by [prepareStatement].
+  @override
   Future<Results> executeStatement(Query query,
       {bool isDeallocate = false}) async {
-    //print('TransactionContext@prepareStatement start');
     var stm = await executeStatementAsStream(query);
     var result = await stm.toResults();
-    //print('TransactionContext@prepareStatement end');
     if (isDeallocate == true) {
       await execute('DEALLOCATE ${query.statementName}');
     }
     return result;
   }
 
-  /// run Query prepared with (prepareStatement) method and return Stream of Row
+  /// Streams a statement created by [prepareStatement].
+  @override
   Future<ResultStream> executeStatementAsStream(Query query) async {
-    //print('TransactionContext@executeStatementAsStream start');
+    _ensureActive();
     try {
-      //cria uma copia
-      var newQuery = query; //query.clone();
-      newQuery.error = null;
-      newQuery.state = QueryState.init;
-      newQuery.reInitStream();
-      //print('execute_named ');
-      newQuery.queryType = QueryType.execStatement;
+      final newQuery = query.execution(query.preparedParams);
       _enqueueQuery(newQuery);
       return newQuery.stream;
     } catch (ex, st) {
@@ -141,10 +253,8 @@ class TransactionContext implements ExecutionContext {
     }
   }
 
-  /// coloca a query na fila
   void _enqueueQuery(Query query) {
-    //print('TransactionContext@_enqueueQuery start');
-    query.state = QueryState.queued;
+    _ensureActive();
     sendQueryQueue.addLast(query);
   }
 }

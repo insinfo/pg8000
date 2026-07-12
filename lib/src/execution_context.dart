@@ -1,6 +1,7 @@
 import 'query.dart';
 import 'to_statement.dart';
 import 'results.dart';
+import 'fast/row_view.dart';
 
 abstract class ExecutionContext {
   /// execute a sql command e return affected row count
@@ -51,4 +52,54 @@ abstract class ExecutionContext {
 
   /// run query prepared with (prepareStatement) method
   Future<ResultStream> executeStatementAsStream(Query query);
+
+  /// Executes through the extended protocol and materializes flat maps
+  /// directly from DataRow messages, without intermediate [Row] objects.
+  /// [params] is a `List` for PostgreSQL `$n` and explicit `?` placeholders,
+  /// or a `Map` for `:` and `@` placeholders. Question-mark mode is never
+  /// auto-detected; prefer `$n` in SQL that contains JSON `?` operators.
+  /// Set [requireBinaryResults] only when every returned OID has a supported
+  /// binary decoder. Unsupported result OIDs fail the query and are never
+  /// retried automatically.
+  Future<List<Map<String, dynamic>>> queryMaps(
+    String sql, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  });
+
+  /// Maps each DataRow directly to an entity. The same [RowView] is reused for
+  /// every callback and must not escape [mapper]. Parameter styles follow
+  /// [queryMaps], as does [requireBinaryResults].
+  Future<List<T>> queryTyped<T>(
+    String sql,
+    T Function(RowView row) mapper, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  });
+
+  /// Consumes rows synchronously using a reused [RowView], without retaining
+  /// rows in the driver. Parameter styles and [requireBinaryResults] follow
+  /// [queryMaps].
+  Future<void> queryEach(
+    String sql,
+    void Function(RowView row) onRow, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  });
+
+  /// Compatibility result path backed by the per-connection statement cache.
+  /// Parameter styles and [requireBinaryResults] follow [queryMaps].
+  Future<Results> queryCached(
+    String sql, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  });
 }

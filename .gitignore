@@ -33,3 +33,5 @@ teste_concorrencia.dart
 
 .idea/
 timezones.txt
+scripts/.timezone/
+referencias/

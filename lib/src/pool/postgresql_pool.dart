@@ -1,474 +1,406 @@
 import 'dart:async';
 
-import 'package:dargres/dargres.dart';
-import 'package:dargres/src/connection_state.dart';
+import '../connection_settings.dart';
+import '../connection_state.dart';
+import '../core.dart';
+import '../fast/row_view.dart';
+import '../results.dart';
+import '../to_statement.dart';
+import '../transaction_context.dart';
+import 'pool.dart';
 
-import 'package:pool/pool.dart';
+export 'pool.dart' show PoolQueueFullException;
 
-import '../connection_interface.dart';
+/// A bounded pool of physical PostgreSQL connections.
+///
+/// Every operation owns one specific connection for its complete lifetime.
+/// Prepared statement caches therefore remain connection-local and two
+/// concurrent operations are never accidentally assigned the same socket.
+class PostgreSqlPool {
+  PostgreSqlPool(
+    this.size,
+    this.connectionInfo, {
+    this.allowAttemptToReconnect = false,
+    this.timeout = defaultTimeout,
+    this.maxPendingOperations = defaultMaxPendingOperations,
+  })  : _permits = Pool(size,
+            timeout: timeout, maxPending: maxPendingOperations),
+        _connectionMutex =
+            Pool(1, maxPending: size > 1 ? size - 1 : 0) {
+    if (size <= 0) {
+      throw RangeError.value(size, 'size', 'Must be greater than zero.');
+    }
+  }
 
-/// A [QueryExecutor] that manages a pool of PostgreSQL connections.
-class PostgreSqlPool implements ConnectionInterface {
-  /// The maximum amount of concurrent connections.
+  static const defaultTimeout = Duration(seconds: 300);
+  static const defaultMaxPendingOperations = 1024;
+
   final int size;
-  List<CoreConnection> connections = [];
+  final ConnectionSettings connectionInfo;
+  final bool allowAttemptToReconnect;
+  final Duration timeout;
+  final int maxPendingOperations;
+  final Pool _permits;
+  final Pool _connectionMutex;
+  final List<CoreConnection> _connections = <CoreConnection>[];
+  final List<bool> _leased = <bool>[];
+  int _cursor = 0;
+  bool _closed = false;
+  Future<void>? _closeFuture;
+  int _operationTimeoutCount = 0;
+  int _connectionReplacementCount = 0;
+  int _connectionReplacementFailureCount = 0;
 
-  /// default query Timeout =  300 seconds
-  static const defaultTimeout = const Duration(seconds: 300);
+  /// Physical sockets currently retained by this pool; never exceeds [size].
+  int get openConnectionCount => _connections
+      .where(
+          (connection) => connection.connectionState != ConnectionState.closed)
+      .length;
 
-  int _index = 0;
-  final Pool _pool;
-  final Pool _connMutex = Pool(1);
+  /// Operations that currently own one of the fixed connection slots.
+  int get leasedConnectionCount => _permits.inUse;
 
-  /// Allow reconnection attempt if PostgreSQL was restarted
-  bool allowAttemptToReconnect = false;
+  /// Operations waiting for a slot. These do not open additional sockets.
+  int get pendingOperationCount => _permits.pendingCount;
 
-  /// restart if timeout is reached
-  bool restartOnTimeout = true;
-  Duration timeout;
-  ConnectionSettings connectionInfo;
+  /// Operations rejected before execution because the bounded FIFO was full.
+  int get rejectedOperationCount => _permits.rejectedCount;
 
-  PostgreSqlPool(this.size, this.connectionInfo,
-      {this.allowAttemptToReconnect = false, this.timeout: defaultTimeout})
-      : _pool = Pool(size, timeout: timeout) {
-    // _pool = Pool(size, timeout: timeout);
-    assert(size > 0, 'Connection pool cannot be empty.');
+  /// Accepted operations that expired while waiting for a connection slot.
+  int get queuedOperationTimeoutCount => _permits.timedOutCount;
+
+  /// Running operations whose execution deadline expired.
+  int get operationTimeoutCount => _operationTimeoutCount;
+
+  /// Closed or invalid physical connections replaced successfully in-place.
+  int get connectionReplacementCount => _connectionReplacementCount;
+
+  /// In-place replacement attempts that could not open a new connection.
+  int get connectionReplacementFailureCount =>
+      _connectionReplacementFailureCount;
+
+  Future<CoreConnection> _newConnection(int index) async {
+    final settings = connectionInfo.clone();
+    settings.connectionName = 'pool_connection_$index';
+    settings.allowAttemptToReconnect = allowAttemptToReconnect;
+    final connection = CoreConnection.fromSettings(settings);
+    if (allowAttemptToReconnect) {
+      await connection.tryReconnect();
+    } else {
+      await connection.connect();
+    }
+    return connection;
   }
 
-  // void reInit() {
-  //   _connMutex = Pool(1);
-  //   _pool = Pool(size, timeout: timeout);
-  // }
+  Future<void> _open() async {
+    if (_connections.isNotEmpty) return;
+    if (_closed) throw StateError('PostgreSQL pool is closed.');
 
-  /// Closes all connections.
-  Future close() async {
-    //print('PostgreSqlPool@close');
-    await _pool.close();
-    await _connMutex.close();
-    return Future.wait(connections.map((c) => c.close()));
-  }
-
-  Future _open() async {
-    if (connections.isEmpty) {
-      final listCon = await Future.wait(
-        List.generate(size, (_) async {
-          //  logger?.fine('Spawning connections...');
-          final settings = connectionInfo.clone();
-          settings.connectionName = 'pool_connection_$_index';
-          //print( 'PostgreSqlPool@_open spawning connection: ${settings.connectionName}');
-          final executor = CoreConnection.fromSettings(settings);
-          await executor.connect();
-          return executor;
-        }),
-      );
-      connections.addAll(listCon);
+    final created = <CoreConnection>[];
+    try {
+      final futures = List<Future<CoreConnection>>.generate(size, (index) async {
+        final connection = await _newConnection(index);
+        created.add(connection);
+        return connection;
+      }, growable: false);
+      _connections.addAll(await Future.wait(futures));
+      _leased.addAll(List<bool>.filled(size, false));
+    } catch (_) {
+      await Future.wait(created.map((connection) => connection.close()));
+      rethrow;
     }
   }
 
-  Future<CoreConnection> _next() {
-    //print('PostgreSqlPool@_next');
-    return _connMutex.withResource(() async {
+  Future<_ConnectionLease> _leaseConnection() {
+    return _connectionMutex.withResource(() async {
       await _open();
-      if (_index >= size) _index = 0;
-      final currentConnIdx = _index++;
-      //print('PostgreSqlExecutorPool currentConnIdx $currentConnIdx ');
-      return connections[currentConnIdx];
-    });
-  }
-
-  /// execute a sql command e return affected row count
-  /// Example: con.execute('DROP SCHEMA IF EXISTS myschema CASCADE;')
-  Future<int> execute(String sql, {Duration? timeout}) {
-    //print('PostgreSqlPool@execute');
-    return _pool.withResource(() async {
-      final executor = await _next();
-      //print(  'PostgreSqlPool@execute connectionState: ${executor.connectionState}');
-      if (executor.connectionState == ConnectionState.closed) {
-        await executor.tryReconnect();
-        return Future.error(
-            Exception('PostgreSqlPool@execute trying to reconnect...'));
-      }
-      if (executor.connectionState == ConnectionState.socketConnecting) {
-        return Future.error(Exception('PostgreSqlPool@execute connecting...'));
-      }
-      if (executor.connectionState == ConnectionState.authenticating) {
-        return Future.error(
-            Exception('PostgreSqlPool@execute authenticating...'));
-      }
-      if (timeout != null) {
-        return executor.execute(sql).timeout(timeout);
-      } else {
-        return executor.execute(sql);
-      }
-    });
-  }
-
-  Future<TransactionContext> beginTransaction({Duration? timeout}) {
-    //print('PostgreSqlPool@execute');
-    // return _pool.withResource(() async {
-    //   final executor = await _next();
-    //   //print('PostgreSqlPool@execute connectionState: ${executor.connectionState}');
-    //   if (executor.connectionState == ConnectionState.closed) {
-    //     await executor.tryReconnect();
-    //     return Future.error(
-    //         Exception('PostgreSqlPool@execute trying to reconnect...'));
-    //   }
-    //   if (executor.connectionState == ConnectionState.socketConnecting) {
-    //     return Future.error(Exception('PostgreSqlPool@execute connecting...'));
-    //   }
-    //   if (executor.connectionState == ConnectionState.authenticating) {
-    //     return Future.error(
-    //         Exception('PostgreSqlPool@beginTransaction authenticating...'));
-    //   }
-    //   final result = await executor.beginTransaction(timeout: timeout);
-    //   return result;
-    // });
-    throw UnimplementedError();
-  }
-
-  Future<void> commit(TransactionContext transaction,
-      {Duration? timeout}) async {
-    //await transaction.connection.commit(transaction, timeout: timeout);
-    throw UnimplementedError();
-  }
-
-  Future<void> rollBack(TransactionContext transaction,
-      {Duration? timeout}) async {
-    //await transaction.connection.rollBack(transaction, timeout: timeout);
-    throw UnimplementedError();
-  }
-
-  /// execute querys in transaction
-  /// [timeout]
-  /// [timeoutInner] timeout of operation inside Transaction
-  Future<T> runInTransaction<T>(
-    Future<T> operation(TransactionContext ctx), {
-    Duration? timeout,
-    Duration? timeoutInner,
-  }) async {
-    if (timeout == null) {
-      timeout = defaultTimeout;
-    }
-    if (timeoutInner == null) {
-      timeoutInner = defaultTimeout;
-    }
-
-    // print('runInTransaction timeout $timeout | timeoutInner $timeoutInner');
-
-    // print('PostgreSqlPool@runInTransaction');
-    return _pool.withResource(() async {
-      final executor = await _next();
-      //print( 'PostgreSqlPool@runInTransaction connectionState: ${executor.connectionState}');
-      if (executor.connectionState == ConnectionState.closed) {
-        await executor.tryReconnect();
-        //print('runInTransaction tryReconnect end');
-        return Future.error(Exception(
-            'PostgreSqlPool@runInTransaction trying to reconnect...'));
-      }
-      if (executor.connectionState == ConnectionState.socketConnecting) {
-        return Future.error(
-            Exception('PostgreSqlPool@runInTransaction connecting...'));
-      }
-      if (executor.connectionState == ConnectionState.authenticating) {
-        return Future.error(
-            Exception('PostgreSqlPool@runInTransaction authenticating...'));
-      }
-
-      var result;
-      TransactionContext? transa;
-      try {
-        if (timeout != null) {
-          transa = await executor.beginTransaction().timeout(timeout);
-        } else {
-          transa = await executor.beginTransaction();
-        }
-
-        if (timeoutInner != null) {
-          result = await operation(transa).timeout(timeoutInner);
-        } else {
-          result = await operation(transa);
-        }
-
-        if (timeout != null) {
-          await executor.commit(transa).timeout(timeout);
-        } else {
-          await executor.commit(transa);
-        }
-      } catch (e) {
-        if (transa != null) {
-          if (timeout != null) {
-            await executor.rollBack(transa).timeout(timeout);
-          } else {
-            await executor.rollBack(transa);
+      for (var offset = 0; offset < size; offset++) {
+        final index = (_cursor + offset) % size;
+        if (_leased[index]) continue;
+        _leased[index] = true;
+        _cursor = (index + 1) % size;
+        try {
+          var connection = _connections[index];
+          if (connection.connectionState == ConnectionState.closed) {
+            connection = await _replaceConnection(index, connection);
+          } else if (connection.connectionState ==
+                  ConnectionState.socketConnecting ||
+              connection.connectionState == ConnectionState.authenticating) {
+            await connection.whenConnected;
           }
+          return _ConnectionLease(index, connection);
+        } catch (_) {
+          _leased[index] = false;
+          rethrow;
         }
-        rethrow;
       }
-
-      return result;
+      throw StateError('Pool permit/connection lease invariant violated.');
     });
   }
 
-  /// execute a prepared unnamed statement
-  /// [params] parameters can be a list or a map,
-  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
-  /// it has to be a List, if different it has to be a Map
-  /// return Query prepared with statementName for execute with (executeStatement) method
-  /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
-  Future<Results> queryUnnamed(String sql, dynamic params,
-      {PlaceholderIdentifier placeholderIdentifier =
-          PlaceholderIdentifier.pgDefault,
-      bool isDeallocate = false,
-      Duration? timeout}) {
-    //print('PostgreSqlPool@queryUnnamed');
-    return _pool.withResource(() async {
-      final executor = await _next();
-      if (allowAttemptToReconnect == true) {
-        if (executor.connectionState == ConnectionState.closed) {
-          await executor.tryReconnect();
-          throw Exception('PostgreSqlPool@queryNamed trying to reconnect...');
-        }
-        if (executor.connectionState == ConnectionState.socketConnecting) {
-          throw Exception(
-              'PostgreSqlPool@queryNamed connecting...'); //Future.error(
-        }
-        if (executor.connectionState == ConnectionState.authenticating) {
-          throw Exception('PostgreSqlPool@queryNamed authenticating...');
-        }
-      }
-
-      if (timeout != null) {
-        return executor
-            .queryUnnamed(
-              sql,
-              params,
-              placeholderIdentifier: placeholderIdentifier,
-              isDeallocate: isDeallocate,
-            )
-            .timeout(timeout);
-      } else {
-        return executor.queryUnnamed(
-          sql,
-          params,
-          placeholderIdentifier: placeholderIdentifier,
-          isDeallocate: isDeallocate,
-        );
-      }
-    });
+  Future<CoreConnection> _replaceConnection(
+      int index, CoreConnection previous) async {
+    await previous.close();
+    if (_closed) throw StateError('PostgreSQL pool is closed.');
+    try {
+      final replacement = await _newConnection(index);
+      _connections[index] = replacement;
+      _connectionReplacementCount++;
+      return replacement;
+    } catch (_) {
+      _connectionReplacementFailureCount++;
+      rethrow;
+    }
   }
 
-  /// execute a prepared named statement
-  /// [params] parameters can be a list or a map,
-  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
-  /// it has to be a List, if different it has to be a Map
-  /// return Query prepared with statementName for execute with (executeStatement) method
-  /// Example: com.queryUnnamed(r'select * from crud_teste.pessoas limit $1', [1]);
-  Future<Results> queryNamed(String sql, dynamic params,
-      {PlaceholderIdentifier placeholderIdentifier =
-          PlaceholderIdentifier.pgDefault,
-      bool isDeallocate = false,
-      Duration? timeout}) {
-    return _pool.withResource(() async {
-      final executor = await _next();
-      if (allowAttemptToReconnect == true) {
-        if (executor.connectionState == ConnectionState.closed) {
-          await executor.tryReconnect();
-          throw Exception('PostgreSqlPool@queryNamed trying to reconnect...');
-        }
-        if (executor.connectionState == ConnectionState.socketConnecting) {
-          throw Exception(
-              'PostgreSqlPool@queryNamed connecting...'); //Future.error(
-        }
-        if (executor.connectionState == ConnectionState.authenticating) {
-          throw Exception('PostgreSqlPool@queryNamed authenticating...');
-        }
-      }
-
-      if (timeout != null) {
-        return executor
-            .queryNamed(
-              sql,
-              params,
-              placeholderIdentifier: placeholderIdentifier,
-              isDeallocate: isDeallocate,
-            )
-            .timeout(timeout);
-      } else {
-        return executor.queryNamed(
-          sql,
-          params,
-          placeholderIdentifier: placeholderIdentifier,
-          isDeallocate: isDeallocate,
-        );
-      }
-    });
+  Future<T> _run<T>(Future<T> Function(CoreConnection connection) action,
+      {Duration? operationTimeout}) {
+    final effectiveTimeout = operationTimeout ?? timeout;
+    if (effectiveTimeout <= Duration.zero) {
+      return Future<T>.error(ArgumentError.value(
+          effectiveTimeout, 'operationTimeout', 'Must be greater than zero.'));
+    }
+    final result = Completer<T>();
+    unawaited(_runGuarded(action, result, effectiveTimeout));
+    return result.future;
   }
 
-  Future<Results> querySimple(String sql, {Duration? timeout}) async {
-    var res = Results([], RowsAffected());
-
-    res = await _pool.withResource<Results>(() async {
-      //print('PostgreSqlPool@querySimple executor b');
-      final executor = await _next();
-      if (allowAttemptToReconnect == true) {
-        if (executor.connectionState == ConnectionState.closed) {
-          await executor.tryReconnect();
-          throw Exception('PostgreSqlPool@querySimple trying to reconnect...');
-        }
-        if (executor.connectionState == ConnectionState.socketConnecting) {
-          throw Exception(
-              'PostgreSqlPool@querySimple connecting...'); //Future.error(
-        }
-        if (executor.connectionState == ConnectionState.authenticating) {
-          throw Exception('PostgreSqlPool@querySimple authenticating...');
-        }
-      }
-
-      // try {
-      // result = await executor.querySimple(sql);
-      // } catch (e) {
-      //   if (allowAttemptToReconnect == true) {
-      //FATAL 28000 no pg_hba.conf entry for host
-      //if code is 57P01 postgresql restart
-      // if (e.toString().contains('57P') || e.toString().contains('28000')) {
-      //   //print( 'PostgreSqlPool@querySimple sem conexão ${executor.connectionName}');
-      //   await executor.tryReconnect().timeout(timeout);
-      // }
-      //   }
-      //   rethrow;
-      // }
-
-      if (timeout != null) {
-        return executor.querySimple(sql).timeout(timeout);
-      } else {
-        return executor.querySimple(sql);
-      }
-    });
-
-    return res;
+  Future<void> _runGuarded<T>(
+    Future<T> Function(CoreConnection connection) action,
+    Completer<T> result,
+    Duration operationTimeout,
+  ) async {
+    try {
+      final outcome = await _permits.withResource(() async {
+        return _runWithLease(action, result, operationTimeout);
+      });
+      if (outcome != null && !result.isCompleted) outcome.complete(result);
+    } catch (error, stackTrace) {
+      if (!result.isCompleted) result.completeError(error, stackTrace);
+    }
   }
 
-  Future<ResultStream> querySimpleAsStream(String sql) {
-    // return _pool.withResource(() async {
-    //   final executor = await _next();
-    //   if (allowAttemptToReconnect == true) {
-    //     if (executor.connectionState == ConnectionState.closed) {
-    //       await executor.tryReconnect();
-    //       throw Exception(
-    //           'PostgreSqlPool@querySimpleAsStream trying to reconnect...');
-    //     }
-    //     if (executor.connectionState == ConnectionState.socketConnecting) {
-    //       throw Exception(
-    //           'PostgreSqlPool@querySimpleAsStream connecting...'); //Future.error(
-    //     }
-    //     if (executor.connectionState == ConnectionState.authenticating) {
-    //       throw Exception(
-    //           'PostgreSqlPool@querySimpleAsStream authenticating...');
-    //     }
-    //   }
-    //   var result;
+  Future<_PoolOperationOutcome<T>?> _runWithLease<T>(
+    Future<T> Function(CoreConnection connection) action,
+    Completer<T> result,
+    Duration operationTimeout,
+  ) async {
+    final settled = Completer<void>();
+    final firstEvent = Completer<void>();
+    var timedOut = false;
+    _PoolOperationOutcome<T>? outcome;
 
-    //   result = await executor.querySimpleAsStream(sql);
-    // } catch (e) {
-    //   if (allowAttemptToReconnect == true) {
-    //     //FATAL 28000 no pg_hba.conf entry for host
-    //     //if code is 57P01 postgresql restart
-    //     if (e.toString().contains('57P') || e.toString().contains('28000')) {
-    //       //print('PostgreSqlPool@querySimpleAsStream sem conexão ${executor.connectionName}');
-    //       await executor.tryReconnect().timeout(timeout);
-    //     }
-    //   }
-    //   rethrow;
-    // }
-    //return result;
-    // });
-    throw UnimplementedError();
+    final lease = await _leaseConnection();
+    try {
+      Future<T>.sync(() => action(lease.connection)).then((value) {
+        outcome = _PoolOperationValue<T>(value);
+        settled.complete();
+        if (!firstEvent.isCompleted) firstEvent.complete();
+      }, onError: (Object error, StackTrace stackTrace) {
+        outcome = _PoolOperationError<T>(error, stackTrace);
+        settled.complete();
+        if (!firstEvent.isCompleted) firstEvent.complete();
+      });
+
+      final timer = Timer(operationTimeout, () {
+        if (settled.isCompleted) return;
+        timedOut = true;
+        _operationTimeoutCount++;
+        if (!result.isCompleted) {
+          result.completeError(
+            TimeoutException(
+              'PostgreSQL pool operation timed out after $operationTimeout.',
+              operationTimeout,
+            ),
+            StackTrace.current,
+          );
+        }
+        firstEvent.complete();
+      });
+
+      await firstEvent.future;
+      timer.cancel();
+
+      if (timedOut) {
+        await _retireTimedOutConnection(lease, settled.future);
+        return null;
+      }
+      return outcome!;
+    } finally {
+      _leased[lease.index] = false;
+    }
   }
 
-  /// prepare statement
-  /// [params] parameters can be a list or a map,
-  /// if you use placeholderIdentifier is PlaceholderIdentifier.pgDefault or PlaceholderIdentifier.onlyQuestionMark
-  /// it has to be a List, if different it has to be a Map
-  /// return Query prepared with statementName for execute with (executeStatement) method
-  /// Example:
-  /// var statement = await prepareStatement('SELECT * FROM table LIMIT $1', [0]);
-  /// var result await executeStatement(statement);
-  Future<Query> prepareStatement(
+  Future<void> _retireTimedOutConnection(
+      _ConnectionLease lease, Future<void> operationSettled) async {
+    try {
+      await lease.connection.close();
+    } catch (_) {
+      // CoreConnection marks itself closed before flushing/destroying, so the
+      // slot remains unusable even if close reports an error.
+    }
+
+    // Closing a socket normally settles protocol futures immediately. A user
+    // transaction callback may still be running, however, and the lease must
+    // remain held until that Future actually completes.
+    await operationSettled;
+
+    if (_closed) return;
+    try {
+      await _replaceConnection(lease.index, lease.connection);
+    } catch (_) {
+      // The closed connection stays in its slot. The next lease will retry an
+      // in-place replacement; it can never reuse the timed-out socket.
+    }
+  }
+
+  Future<int> execute(String sql, {Duration? timeout}) =>
+      _run((connection) => connection.execute(sql), operationTimeout: timeout);
+
+  Future<Results> querySimple(String sql, {Duration? timeout}) => _run(
+      (connection) => connection.querySimple(sql),
+      operationTimeout: timeout);
+
+  Future<Results> queryUnnamed(
     String sql,
     dynamic params, {
-    bool isUnamedStatement = false,
     PlaceholderIdentifier placeholderIdentifier =
         PlaceholderIdentifier.pgDefault,
-    Duration? timeout,
-  }) {
-    return _pool.withResource(() async {
-      final executor = await _next();
-      if (allowAttemptToReconnect == true) {
-        if (executor.connectionState == ConnectionState.closed) {
-          await executor.tryReconnect();
-          throw Exception(
-              'PostgreSqlPool@querySimpleAsStream trying to reconnect...');
-        }
-        if (executor.connectionState == ConnectionState.socketConnecting) {
-          throw Exception(
-              'PostgreSqlPool@querySimpleAsStream connecting...'); //Future.error(
-        }
-        if (executor.connectionState == ConnectionState.authenticating) {
-          throw Exception(
-              'PostgreSqlPool@querySimpleAsStream authenticating...');
-        }
-      }
-
-      //try {
-      // result = await executor.prepareStatement(sql, params,
-      //     isUnamedStatement: isUnamedStatement,
-      //     placeholderIdentifier: placeholderIdentifier);
-      // } catch (e) {
-      //   if (allowAttemptToReconnect == true) {
-      //     //FATAL 28000 no pg_hba.conf entry for host
-      //     //if code is 57P01 postgresql restart
-      //     if (e.toString().contains('57P') || e.toString().contains('28000')) {
-      //       //print( 'PostgreSqlPool@prepareStatement sem conexão ${executor.connectionName}');
-      //       await executor.tryReconnect().timeout(timeout!);
-      //     }
-      //   }
-      //   rethrow;
-      // }
-      if (timeout != null) {
-        return executor
-            .prepareStatement(sql, params,
-                isUnamedStatement: isUnamedStatement,
-                placeholderIdentifier: placeholderIdentifier)
-            .timeout(timeout);
-      } else {
-        return executor.prepareStatement(sql, params,
-            isUnamedStatement: isUnamedStatement,
-            placeholderIdentifier: placeholderIdentifier);
-      }
-    });
-  }
-
-  /// run prepared query with (prepareStatement) method and return List of Row
-  Future<Results> executeStatement(
-    Query query, {
     bool isDeallocate = false,
     Duration? timeout,
-  }) async {
-    if (timeout != null) {
-      return query
-          .executeStatement(isDeallocate: isDeallocate)
-          .timeout(timeout);
-    } else {
-      return query.executeStatement(isDeallocate: isDeallocate);
-    }
+  }) =>
+      _run(
+        (connection) => connection.queryUnnamed(
+          sql,
+          params,
+          placeholderIdentifier: placeholderIdentifier,
+          isDeallocate: isDeallocate,
+        ),
+        operationTimeout: timeout,
+      );
+
+  Future<Results> queryNamed(
+    String sql,
+    dynamic params, {
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool isDeallocate = false,
+    Duration? timeout,
+  }) =>
+      _run(
+        (connection) => connection.queryNamed(
+          sql,
+          params,
+          placeholderIdentifier: placeholderIdentifier,
+          isDeallocate: isDeallocate,
+        ),
+        operationTimeout: timeout,
+      );
+
+  Future<List<Map<String, dynamic>>> queryMaps(
+    String sql, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  }) =>
+      _run((connection) => connection.queryMaps(sql,
+          params: params,
+          placeholderIdentifier: placeholderIdentifier,
+          requireBinaryResults: requireBinaryResults));
+
+  Future<List<T>> queryTyped<T>(
+    String sql,
+    T Function(RowView row) mapper, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  }) =>
+      _run((connection) => connection.queryTyped<T>(sql, mapper,
+          params: params,
+          placeholderIdentifier: placeholderIdentifier,
+          requireBinaryResults: requireBinaryResults));
+
+  Future<void> queryEach(
+    String sql,
+    void Function(RowView row) onRow, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  }) =>
+      _run((connection) => connection.queryEach(sql, onRow,
+          params: params,
+          placeholderIdentifier: placeholderIdentifier,
+          requireBinaryResults: requireBinaryResults));
+
+  Future<Results> queryCached(
+    String sql, {
+    dynamic params,
+    PlaceholderIdentifier placeholderIdentifier =
+        PlaceholderIdentifier.pgDefault,
+    bool requireBinaryResults = false,
+  }) =>
+      _run((connection) => connection.queryCached(sql,
+          params: params,
+          placeholderIdentifier: placeholderIdentifier,
+          requireBinaryResults: requireBinaryResults));
+
+  Future<T> runInTransaction<T>(
+    Future<T> Function(TransactionContext context) operation, {
+    Duration? timeout,
+  }) =>
+      _run(
+        (connection) => connection.runInTransaction(operation),
+        operationTimeout: timeout,
+      );
+
+  Future<void> close() {
+    final current = _closeFuture;
+    if (current != null) return current;
+    final closing = _close();
+    _closeFuture = closing;
+    return closing;
   }
 
-  Future<ResultStream> executeStatementAsStream(Query query) {
-    throw UnimplementedError();
+  Future<void> _close() async {
+    _closed = true;
+    await _permits.close();
+    await _connectionMutex.close();
+    await Future.wait(_connections.map((connection) => connection.close()));
+    _connections.clear();
+    _leased.clear();
   }
+}
+
+class _ConnectionLease {
+  const _ConnectionLease(this.index, this.connection);
+
+  final int index;
+  final CoreConnection connection;
+}
+
+abstract class _PoolOperationOutcome<T> {
+  void complete(Completer<T> completer);
+}
+
+class _PoolOperationValue<T> implements _PoolOperationOutcome<T> {
+  const _PoolOperationValue(this.value);
+
+  final T value;
 
   @override
-  Future<CoreConnection> connect({int? delayBeforeConnect}) {
-    throw UnimplementedError();
-  }
+  void complete(Completer<T> completer) => completer.complete(value);
+}
+
+class _PoolOperationError<T> implements _PoolOperationOutcome<T> {
+  const _PoolOperationError(this.error, this.stackTrace);
+
+  final Object error;
+  final StackTrace stackTrace;
+
+  @override
+  void complete(Completer<T> completer) =>
+      completer.completeError(error, stackTrace);
 }

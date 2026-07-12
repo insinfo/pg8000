@@ -1,7 +1,7 @@
-import 'non_ASCII_space_characters.dart';
+import 'non_ascii_spaces.dart';
 
 /// 2.3.  Prohibited Output
-var prohibited_characters = non_ASCII_space_characters +
+final prohibitedCharacters = nonAsciiSpaceCharacters +
     [
       // C.2.1 ASCII control characters
       // https://tools.ietf.org/html/rfc3454#appendix-C.2.1

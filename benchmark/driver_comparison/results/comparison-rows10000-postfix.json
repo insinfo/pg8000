@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-07-12T20:58:30.441281Z",
+  "runtime": {
+    "dart": "3.6.2 (stable) (Wed Jan 29 01:20:39 2025 -0800) on \"windows_x64\"",
+    "operating_system": "windows",
+    "operating_system_version": "\"Windows 10 Pro\" 10.0 (Build 26200)",
+    "executable": "C:\\tools\\dartsdk-3.6.2\\bin\\dart.exe"
+  },
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "postgres",
+    "user": "dart",
+    "ssl": false,
+    "connect_timeout_seconds": 30,
+    "query_timeout_seconds": 120
+  },
+  "configuration": {
+    "rows_per_operation": 10000,
+    "cold_samples": 7,
+    "warm_samples": 10,
+    "warmup_operations": 3,
+    "operations_per_warm_sample": 3,
+    "drivers": [
+      "dargres",
+      "postgres_fork"
+    ],
+    "cold_definition": "fresh connection and empty client statement cache; connect/close excluded",
+    "warm_definition": "persistent connection after warmup; client statement reuse enabled"
+  },
+  "correctness": {
+    "rows": 10000,
+    "checksum": 2756986225,
+    "black_hole": 0
+  },
+  "results": [
+    {
+      "driver": "dargres",
+      "scenario": "flat_map",
+      "temperature": "cold",
+      "sample_count": 7,
+      "operations_per_sample": 1,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 9152.0,
+        "p95": 63231.0,
+        "min": 7540.0,
+        "max": 63231.0
+      },
+      "median_rows_per_second": 1092657.343,
+      "samples_microseconds_per_operation": [
+        63231.0,
+        9152.0,
+        7705.0,
+        9617.0,
+        10664.0,
+        7540.0,
+        7712.0
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "postgres_fork",
+      "scenario": "flat_map",
+      "temperature": "cold",
+      "sample_count": 7,
+      "operations_per_sample": 1,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 20672.0,
+        "p95": 120109.0,
+        "min": 18067.0,
+        "max": 120109.0
+      },
+      "median_rows_per_second": 483746.13,
+      "samples_microseconds_per_operation": [
+        120109.0,
+        20672.0,
+        26843.0,
+        19375.0,
+        23207.0,
+        18067.0,
+        19717.0
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "dargres",
+      "scenario": "flat_map",
+      "temperature": "warm",
+      "sample_count": 10,
+      "operations_per_sample": 3,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 6835.167,
+        "p95": 22762.667,
+        "min": 6204.0,
+        "max": 22762.667
+      },
+      "median_rows_per_second": 1463022.116,
+      "samples_microseconds_per_operation": [
+        8600.333,
+        22762.667,
+        13020.667,
+        6740.333,
+        6930.0,
+        6204.0,
+        6549.0,
+        6675.0,
+        7036.667,
+        6643.0
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "postgres_fork",
+      "scenario": "flat_map",
+      "temperature": "warm",
+      "sample_count": 10,
+      "operations_per_sample": 3,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 14545.5,
+        "p95": 15877.333,
+        "min": 14103.667,
+        "max": 15877.333
+      },
+      "median_rows_per_second": 687497.852,
+      "samples_microseconds_per_operation": [
+        15877.333,
+        15329.667,
+        14103.667,
+        15201.0,
+        15221.667,
+        14152.0,
+        14519.333,
+        14329.333,
+        14571.667,
+        14484.0
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "dargres",
+      "scenario": "typed_entity",
+      "temperature": "cold",
+      "sample_count": 7,
+      "operations_per_sample": 1,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 5686.0,
+        "p95": 10788.0,
+        "min": 5538.0,
+        "max": 10788.0
+      },
+      "median_rows_per_second": 1758705.593,
+      "samples_microseconds_per_operation": [
+        10788.0,
+        6265.0,
+        5670.0,
+        5650.0,
+        5686.0,
+        5538.0,
+        7345.0
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "postgres_fork",
+      "scenario": "typed_entity",
+      "temperature": "cold",
+      "sample_count": 7,
+      "operations_per_sample": 1,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 14189.0,
+        "p95": 17795.0,
+        "min": 12642.0,
+        "max": 17795.0
+      },
+      "median_rows_per_second": 704771.302,
+      "samples_microseconds_per_operation": [
+        17795.0,
+        14189.0,
+        12664.0,
+        12642.0,
+        15227.0,
+        14509.0,
+        13793.0
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "dargres",
+      "scenario": "typed_entity",
+      "temperature": "warm",
+      "sample_count": 10,
+      "operations_per_sample": 3,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 4562.167,
+        "p95": 5462.667,
+        "min": 3994.333,
+        "max": 5462.667
+      },
+      "median_rows_per_second": 2191940.964,
+      "samples_microseconds_per_operation": [
+        5462.667,
+        4662.333,
+        4665.667,
+        4283.667,
+        4140.0,
+        4462.0,
+        4808.333,
+        4279.0,
+        4692.333,
+        3994.333
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "postgres_fork",
+      "scenario": "typed_entity",
+      "temperature": "warm",
+      "sample_count": 10,
+      "operations_per_sample": 3,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 10351.167,
+        "p95": 10760.0,
+        "min": 9548.667,
+        "max": 10760.0
+      },
+      "median_rows_per_second": 966074.678,
+      "samples_microseconds_per_operation": [
+        10534.667,
+        9562.333,
+        10443.0,
+        9673.333,
+        10021.667,
+        10760.0,
+        10433.333,
+        9548.667,
+        10275.333,
+        10427.0
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "dargres",
+      "scenario": "query_each_checksum",
+      "temperature": "cold",
+      "sample_count": 7,
+      "operations_per_sample": 1,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 5273.0,
+        "p95": 6219.0,
+        "min": 5197.0,
+        "max": 6219.0
+      },
+      "median_rows_per_second": 1896453.632,
+      "samples_microseconds_per_operation": [
+        6219.0,
+        5362.0,
+        5238.0,
+        5197.0,
+        5227.0,
+        5273.0,
+        5731.0
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "postgres_fork",
+      "scenario": "query_each_checksum",
+      "temperature": "cold",
+      "sample_count": 7,
+      "operations_per_sample": 1,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 14526.0,
+        "p95": 17120.0,
+        "min": 13701.0,
+        "max": 17120.0
+      },
+      "median_rows_per_second": 688420.763,
+      "samples_microseconds_per_operation": [
+        17120.0,
+        15749.0,
+        13746.0,
+        13794.0,
+        13701.0,
+        15315.0,
+        14526.0
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "dargres",
+      "scenario": "query_each_checksum",
+      "temperature": "warm",
+      "sample_count": 10,
+      "operations_per_sample": 3,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 3969.833,
+        "p95": 5161.333,
+        "min": 3818.667,
+        "max": 5161.333
+      },
+      "median_rows_per_second": 2518997.439,
+      "samples_microseconds_per_operation": [
+        4919.667,
+        4984.667,
+        5161.333,
+        3924.667,
+        3818.667,
+        4269.333,
+        4015.0,
+        3895.667,
+        3920.333,
+        3917.333
+      ],
+      "checksum": 2756986225
+    },
+    {
+      "driver": "postgres_fork",
+      "scenario": "query_each_checksum",
+      "temperature": "warm",
+      "sample_count": 10,
+      "operations_per_sample": 3,
+      "rows_per_operation": 10000,
+      "latency_microseconds": {
+        "median": 9686.667,
+        "p95": 10591.333,
+        "min": 9201.0,
+        "max": 10591.333
+      },
+      "median_rows_per_second": 1032346.869,
+      "samples_microseconds_per_operation": [
+        10083.0,
+        9244.333,
+        9260.333,
+        10591.333,
+        10088.333,
+        9432.0,
+        9201.0,
+        10442.667,
+        9941.333,
+        9332.333
+      ],
+      "checksum": 2756986225
+    }
+  ]
+}
+

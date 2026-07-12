@@ -41,35 +41,4 @@ class ServerInfo {
     this.standardConformingStrings,
     required this.timeZone,
   });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'raw_params': rawParams,
-      'client_encoding': clientEncoding,
-      'datestyle': dateStyle,
-      'integer_datetimes': integerDatetimes,
-      'is_superuser': isSuperuser,
-      'server_encoding': serverEncoding,
-      'server_version': serverVersion,
-      'session_authorization': sessionAuthorization,
-      'standard_conforming_strings': standardConformingStrings,
-      'timezone': timeZone,
-    };
-  }
-
-  factory ServerInfo.fromMap(Map<String, dynamic> map) {
-    var s = ServerInfo(
-      clientEncoding: map['client_encoding'] ?? '',
-      dateStyle: map['datestyle'] ?? '',
-      integerDatetimes: map['integer_datetimes'] ?? '',
-      isSuperuser: map['is_superuser'] ?? '',
-      serverEncoding: map['server_encoding'] ?? '',
-      serverVersion: map['server_version'] ?? '',
-      sessionAuthorization: map['session_authorization'] ?? '',
-      standardConformingStrings: map['standard_conforming_strings'] ?? '',
-      timeZone: map['timezone'] ?? '',
-    );
-    s.rawParams = Map<String, dynamic>.from(map['params']);
-    return s;
-  }
 }

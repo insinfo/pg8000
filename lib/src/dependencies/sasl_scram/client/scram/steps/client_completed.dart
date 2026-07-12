@@ -8,7 +8,7 @@ class ClientCompleted extends SaslStep {
 
   @override
   SaslStep transition(List<int> bytesReceivedFromServer,
-      {passwordDigestResolver? passwordDigestResolver}) {
+      {PasswordDigestResolver? passwordDigestResolver}) {
     throw SaslScramException('Sasl conversation has completed');
   }
 }

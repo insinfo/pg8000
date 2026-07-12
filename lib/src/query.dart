@@ -1,39 +1,26 @@
 import 'dart:async';
-
-import 'package:dargres/dargres.dart';
+import 'dart:typed_data';
 
 import 'column_description.dart';
+import 'core.dart';
+import 'exceptions.dart';
+import 'fast/result_schema.dart';
+import 'results.dart';
 import 'row_info.dart';
+import 'to_statement.dart';
+import 'transaction_context.dart';
 
-class QueryState {
-  final int value;
-  const QueryState(this.value);
-  static const QueryState queued = const QueryState(1);
-  static const QueryState busy = const QueryState(6);
-  static const QueryState streaming = const QueryState(7);
-  static const QueryState done = const QueryState(8);
-  static const QueryState init = const QueryState(9);
-  static const QueryState error = const QueryState(10);
-
-  @override
-  String toString() {
-    var v = '';
-    if (value == 1) v = 'queued';
-    if (value == 6) v = 'busy';
-    if (value == 7) v = 'streaming';
-    if (value == 8) v = 'done';
-    if (value == 9) v = 'init';
-    if (value == 10) v = 'error';
-    return 'QueryState.$v';
-  }
-}
+/// Receives a complete PostgreSQL DataRow body directly from the socket
+/// buffer. [offset] and [length] delimit the body inside [bytes].
+typedef DataRowSink = void Function(Uint8List bytes, int offset, int length);
 
 class QueryType {
   final String value;
   const QueryType(this.value);
-  static const QueryType prepareStatement = const QueryType('prepareStatement');
-  static const QueryType execStatement = const QueryType('execStatement');
-  static const QueryType simple = const QueryType('simple');
+  static const QueryType prepareStatement = QueryType('prepareStatement');
+  static const QueryType execStatement = QueryType('execStatement');
+  static const QueryType extended = QueryType('extended');
+  static const QueryType simple = QueryType('simple');
 
   @override
   String toString() {
@@ -42,21 +29,22 @@ class QueryType {
 }
 
 class Query {
-  //statement sql string
   late String _sql;
 
   String get getSql => _sql;
 
-  /// for prepared named statement
-
   int prepareStatementId = 0;
   bool isUnamedStatement = false;
+
+  /// Encoded protocol identifiers cached per prepared statement.
+  Uint8List? encodedStatementName;
+  Uint8List? encodedSql;
 
   CoreConnection? connection;
 
   Future<Results> executeStatement({bool isDeallocate = false}) {
-    if (_transactionContext != null) {
-      return _transactionContext!
+    if (transactionContext != null) {
+      return transactionContext!
           .executeStatement(this, isDeallocate: isDeallocate);
     } else if (connection != null) {
       return connection!.executeStatement(this, isDeallocate: isDeallocate);
@@ -66,70 +54,79 @@ class Query {
     }
   }
 
-  /// generate unique name for named prepared Statement
+  /// Generates a unique name for a named prepared statement.
   String get statementName {
-    //pdo_stmt_00000004
-    //return isUnamedStatement == false  ? '$prepareStatementId'.padLeft(12, '0') : '';
     return isUnamedStatement == false
-        ? 'dargres_stmt_' + '$prepareStatementId'.padLeft(8, '0')
+        ? 'dargres_stmt_${'$prepareStatementId'.padLeft(8, '0')}'
         : '';
-  } //dargres_statement_$prepareStatementId
-
-  QueryState state = QueryState.queued;
+  }
 
   RowsAffected rowsAffected = RowsAffected();
 
-  /// params for prepared querys
   List? _params;
 
-  /// oids for prepared querys
   List _oids = [];
-
-  /// se ouver params é uma Prepared query
-  //bool get isPrepared => _params != null || _params?.isEmpty == true;
 
   QueryType queryType = QueryType.simple;
 
-  /// informa que terminaou a execução dos passos de uma prepared query
-  bool isPreparedComplete = false;
+  bool parseComplete = false;
 
-  List get preparedParams => _params != null ? _params! : [];
+  List get preparedParams => _params ?? const <dynamic>[];
   List get oids => _oids;
 
-  int rowCount = -1;
+  int rowCount = 0;
   int columnCount = 0;
 
-  /// informações das colunas
   List<ColumnDescription>? columns;
-  //
-  PostgresqlException? _error = null;
-  set error(PostgresqlException? e) {
-    _error = e;
+
+  /// Schema and pre-resolved decoders used by the DataRow hot path.
+  ResultSchema? resultSchema;
+
+  /// Optional direct result sink. When set, no [Row] or stream event is
+  /// created for a DataRow.
+  DataRowSink? dataRowSink;
+
+  /// Whether this execution requires every result column in binary format.
+  ///
+  /// This is execution state rather than statement identity: callers may use
+  /// the same cached statement in strict-binary and mixed-format modes.
+  final bool requireBinaryResults;
+
+  Object? clientError;
+  StackTrace? clientStackTrace;
+
+  Completer<void>? _completion;
+
+  /// Completion used by the direct map/typed/callback result paths.
+  Future<void> get completed {
+    return (_completion ??= Completer<void>()).future;
   }
 
-  PostgresqlException? get error => _error;
+  bool get hasDirectSink => dataRowSink != null;
+  bool get hasCompletionListener => _completion != null;
+  PostgresqlException? error;
 
-  StackTrace? stackTrace = null;
+  StackTrace? stackTrace;
 
-  TransactionContext? _transactionContext;
+  TransactionContext? transactionContext;
 
-  set transactionContext(TransactionContext ctx) {
-    _transactionContext = ctx;
+  void resetForRetry() {
+    error = null;
+    clientError = null;
+    clientStackTrace = null;
+    stackTrace = null;
+    rowsAffected.value = 0;
+    rowCount = 0;
   }
 
-  StreamController<Row> _controller = StreamController<Row>();
-  //Stream<Row> get stream => _controller.stream;
-  //ResultStream<Row> get stream => ResultStream(_controller.stream, rowsAffected);
+  StreamController<Row>? _controller;
+  Future<void>? _closeFuture;
 
-  ResultStream get stream => _controller.asResultStream(rowsAffected);
+  ResultStream get stream =>
+      (_controller ??= StreamController<Row>()).asResultStream(rowsAffected);
 
   bool get streamIsClosed {
-    return _controller.isClosed;
-  }
-
-  /// for use internal not call this
-  void reInitStream() {
-    _controller = StreamController<Row>();
+    return _controller?.isClosed ?? false;
   }
 
   final PlaceholderIdentifier placeholderIdentifier;
@@ -138,9 +135,18 @@ class Query {
     var parameters = params;
 
     if (placeholderIdentifier == PlaceholderIdentifier.onlyQuestionMark) {
+      if (params is! List) {
+        throw ArgumentError.value(
+            params, 'params', 'Question-mark placeholders require a List.');
+      }
       _sql = toStatement2(_sql);
+    } else if (placeholderIdentifier == PlaceholderIdentifier.pgDefault) {
+      if (params is! List) {
+        throw ArgumentError.value(
+            params, 'params', 'PostgreSQL placeholders require a List.');
+      }
     } else if (placeholderIdentifier != PlaceholderIdentifier.pgDefault) {
-      if (!(params is Map)) {
+      if (params is! Map) {
         throw PostgresqlException(
             'the [params] argument must be a `Map` when using placeholderIdentifier != pgDefault | onlyQuestionMark ');
       }
@@ -159,6 +165,7 @@ class Query {
       List? oidsP,
       this.columns,
       this.connection,
+      this.requireBinaryResults = false,
       this.placeholderIdentifier = PlaceholderIdentifier.pgDefault}) {
     if (sql == '') {
       throw PostgresqlException('SQL query is null or empty.');
@@ -179,52 +186,77 @@ class Query {
     error = null;
   }
 
-  Query clone() {
-    final newQuery = new Query(_sql,
+  /// Creates independent execution state for a prepared statement. The
+  /// statement metadata is shared, while controller, counters and errors are
+  /// not, so cached statements can safely serve queued concurrent calls.
+  Query execution(dynamic params, {bool? requireBinaryResults}) {
+    final newQuery = Query(_sql,
+        params: params,
         columns: columns,
         prepareStatementId: prepareStatementId,
-        params: preparedParams,
         oidsP: oids,
-        connection: connection);
-    newQuery.queryType = queryType;
+        connection: connection,
+        requireBinaryResults:
+            requireBinaryResults ?? this.requireBinaryResults);
+    newQuery.isUnamedStatement = isUnamedStatement;
+    newQuery.queryType = QueryType.execStatement;
     newQuery.columnCount = columnCount;
-    newQuery.rowCount = rowCount;
-    newQuery.rowsAffected = rowsAffected;
-    newQuery.error = error;
-    newQuery.isPreparedComplete = isPreparedComplete;
-    newQuery.state = state;
-
+    newQuery.resultSchema = resultSchema;
+    newQuery.parseComplete = true;
+    newQuery.transactionContext = transactionContext;
+    newQuery.encodedStatementName = encodedStatementName;
+    newQuery.encodedSql = encodedSql;
     return newQuery;
   }
 
-  void addPreparedParams(dynamic params, [List? oidsP]) {
-    _formatSql(params);
-    if (oidsP != null) {
-      _oids = oidsP;
-    }
-    isPreparedComplete = false;
+  /// Copies only immutable server-side statement metadata. Execution params,
+  /// errors, rows and controllers are intentionally not retained by caches.
+  Query statementTemplate({ResultSchema? schema}) {
+    final template = Query(_sql,
+        columns: schema?.columns ?? columns,
+        prepareStatementId: prepareStatementId,
+        oidsP: oids,
+        connection: connection,
+        requireBinaryResults: requireBinaryResults);
+    template.isUnamedStatement = isUnamedStatement;
+    template.queryType = QueryType.prepareStatement;
+    template.columnCount = schema?.columnCount ?? columnCount;
+    template.resultSchema = schema ?? resultSchema;
+    template.parseComplete = true;
+    template.encodedStatementName = encodedStatementName;
+    template.encodedSql = encodedSql;
+    return template;
   }
 
-  void addOids(List? oidsP) {
-    if (oidsP != null) {
-      _oids = oidsP;
-    }
-  }
-
-  void addRow(List<dynamic> rowData) {
-    var row = Row(rowData, columns!);
+  void addRow(List<Object?> rowData) {
+    var row = Row(rowData, columns!, resultSchema?.nameToIndex);
     rowCount++;
-    //_rows.add(row);
-    _controller.add(row);
+    (_controller ??= StreamController<Row>()).add(row);
   }
 
-  Future<void> close() async {
-    await _controller.close();
-    state = QueryState.done;    
+  void finish() {
+    final completion = _completion;
+    if (completion != null && !completion.isCompleted) {
+      final err = clientError ?? error;
+      if (err == null) {
+        completion.complete();
+      } else {
+        completion.completeError(err, clientStackTrace ?? stackTrace);
+      }
+    }
+    final controller = _controller;
+    if (controller != null && !controller.isClosed) {
+      _closeFuture = controller.close();
+    }
+  }
+
+  Future<void> close() {
+    finish();
+    return _closeFuture ?? Future<void>.value();
   }
 
   void addStreamError(Object err, [StackTrace? stackTrace]) {
-    _controller.addError(err, stackTrace);
+    (_controller ??= StreamController<Row>()).addError(err, stackTrace);
     // stream will be closed once the ready for query message is received.
   }
 }

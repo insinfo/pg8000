@@ -1,6 +1,6 @@
 /// B.1 Commonly mapped to nothing
 /// https://tools.ietf.org/html/rfc3454#appendix-B.1
-var commonly_mapped_to_nothing = [
+final commonlyMappedToNothing = [
   0x00ad,
   0x034f,
   0x1806,

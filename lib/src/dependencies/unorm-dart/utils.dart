@@ -8,7 +8,7 @@ Function reduceRight(
     [Function? initialValue]) {
   var length = list.length;
   var index = length - 1;
-  var value;
+  dynamic value;
   var isValueSet = false;
   if (1 < list.length) {
     value = initialValue;
@@ -23,7 +23,7 @@ Function reduceRight(
     }
   }
   if (!isValueSet) {
-    throw new TypeError(); //'Reduce of empty array with no initial value'
+    throw TypeError();
   }
   return value;
 }

@@ -47,6 +47,7 @@ class ServerNotice {
 
   String? get routine => fields['R'];
 
+  @override
   String toString() => connectionName == null
       ? '$severity $code $message'
       : '$severity $code $message #$connectionName';

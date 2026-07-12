@@ -1,0 +1,13 @@
+name: dargres_driver_comparison
+description: Reproducible local benchmark comparing dargres and postgres_fork.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  dargres:
+    path: ../..
+  postgres_fork:
+    path: ../../../postgres_fork

@@ -1,6 +1,6 @@
 /// A.1 Unassigned code points in Unicode 3.2
 /// https://tools.ietf.org/html/rfc3454#appendix-A.1
-var unassigned_code_points = [
+final unassignedCodePoints = [
   0x0221,
   for (var i = 0x0234; i <= 0x024f; i++) i,
   for (var i = 0x02ae; i <= 0x02af; i++) i,

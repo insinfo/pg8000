@@ -11,16 +11,16 @@ class TransactionState {
   /// Directly after sending a query the transaction state is unknown, as the
   /// query may change the transaction state. Wait until the query is completed
   /// to query the transaction state.
-  static const TransactionState unknown = const TransactionState('unknown');
+  static const TransactionState unknown = TransactionState('unknown');
   
   /// The current session has not opened a transaction.
-  static const TransactionState none = const TransactionState('none');
+  static const TransactionState none = TransactionState('none');
   
   /// The current session has an open transaction.
-  static const TransactionState begun = const TransactionState('begun');
+  static const TransactionState begun = TransactionState('begun');
   
   /// A transaction was opened on the current session, but an error occurred.
   /// In this state all futher commands will be ignored until a rollback is
   /// issued.
-  static const TransactionState error = const TransactionState('error');
+  static const TransactionState error = TransactionState('error');
 }

@@ -5,9 +5,9 @@ import 'utils.dart';
 
 class DecompositeIterator implements UnormIterator {
   final RecursiveDecompositeIterator _iterator;
-  List<UChar> _resultBuffer;
+  final List<UChar> _resultBuffer;
 
-  DecompositeIterator(this._iterator) : this._resultBuffer = [];
+  DecompositeIterator(this._iterator) : _resultBuffer = [];
 
   @override
   UChar? next() {
