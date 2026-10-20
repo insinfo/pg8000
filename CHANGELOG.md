@@ -6,6 +6,10 @@ Details: [doc/release_notes_4.0.1.md](doc/release_notes_4.0.1.md).
 
 ### Fixed
 
+- DateTime parameters carry their zone: a local DateTime was sent without its
+  offset, so the server read it in the session time zone (a process in UTC
+  with a session in America/Sao_Paulo stored timestamptz three hours off).
+
 - Transaction commands (`COMMIT`, `ROLLBACK`, `SAVEPOINT`) could wait forever
   after the transaction awaited other I/O, e.g. a second pool lease.
 - `PostgreSqlPool` opens connections on demand instead of all slots at once.

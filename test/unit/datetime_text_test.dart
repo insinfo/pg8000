@@ -111,4 +111,52 @@ void main() {
           r"select 'it\'s ?', $1 p");
     });
   });
+
+  group('DateTime parameters carry their zone', () {
+    test('UTC values end with Z', () {
+      expect(converter().dateTimeOut(DateTime.utc(2024, 3, 10, 12, 34, 56, 789, 123)),
+          '2024-03-10T12:34:56.789123Z');
+    });
+
+    test('local values carry their offset (it was left out)', () {
+      final value = _FixedOffsetDateTime(
+          DateTime.utc(2024, 3, 10, 15, 34, 56, 7), const Duration(hours: -3));
+      expect(converter().dateTimeOut(value), '2024-03-10T12:34:56.007-03:00');
+      final halfHour = _FixedOffsetDateTime(
+          DateTime.utc(2024, 1, 1, 12), const Duration(minutes: -30));
+      expect(converter().dateTimeOut(halfHour), '2024-01-01T11:30:00.000-00:30');
+    });
+  });
+}
+
+/// A local DateTime with a chosen offset (the platform zone may be anything).
+class _FixedOffsetDateTime implements DateTime {
+  _FixedOffsetDateTime(DateTime utc, this.timeZoneOffset)
+      : _local = utc.add(timeZoneOffset);
+
+  final DateTime _local;
+  @override
+  final Duration timeZoneOffset;
+
+  @override
+  bool get isUtc => false;
+  @override
+  int get year => _local.year;
+  @override
+  int get month => _local.month;
+  @override
+  int get day => _local.day;
+  @override
+  int get hour => _local.hour;
+  @override
+  int get minute => _local.minute;
+  @override
+  int get second => _local.second;
+  @override
+  int get millisecond => _local.millisecond;
+  @override
+  int get microsecond => _local.microsecond;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

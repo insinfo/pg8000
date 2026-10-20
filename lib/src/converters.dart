@@ -201,8 +201,27 @@ class TypeConverter {
   }
 
   /// Dart DateTime to postgresql
+  /// ISO 8601 with the zone: `Z` for UTC, the offset for local values.
+  ///
+  /// `toIso8601String()` has no offset for a local DateTime, so the server
+  /// read it in the session time zone instead of the Dart process zone (a
+  /// process in UTC with a session in America/Sao_Paulo stored timestamptz
+  /// three hours off); a TZDateTime ends with its own offset already.
   String dateTimeOut(DateTime v) {
-    return v.toIso8601String();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final year = v.year;
+    final sign = year < 0 ? '-' : (year > 9999 ? '+' : '');
+    final y =
+        '$sign${year.abs().toString().padLeft(year.abs() > 9999 ? 6 : 4, '0')}';
+    final ms = v.millisecond.toString().padLeft(3, '0');
+    final us = v.microsecond == 0 ? '' : v.microsecond.toString().padLeft(3, '0');
+    final fields = '$y-${two(v.month)}-${two(v.day)}T${two(v.hour)}:'
+        '${two(v.minute)}:${two(v.second)}.$ms$us';
+    if (v.isUtc) return '${fields}Z';
+    final offset = v.timeZoneOffset.inMinutes;
+    final zone = '${offset < 0 ? '-' : '+'}'
+        '${two(offset.abs() ~/ 60)}:${two(offset.abs() % 60)}';
+    return '$fields$zone';
   }
 
   /// Dart Map to postgresql

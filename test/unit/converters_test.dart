@@ -28,8 +28,16 @@ void main() {
     });
 
     test('test_array_out DateTime', () {
-      expect(typeConverter.arrayOut([DateTime(2022, 3, 2)]),
-          equals("{2022-03-02T00:00:00.000}"));
+      final value = DateTime(2022, 3, 2);
+      final offset = value.timeZoneOffset.inMinutes;
+      String two(int n) => n.toString().padLeft(2, '0');
+      final zone = '${offset < 0 ? '-' : '+'}'
+          '${two(offset.abs() ~/ 60)}:${two(offset.abs() % 60)}';
+      // Local values carry their offset.
+      expect(typeConverter.arrayOut([value]),
+          equals('{2022-03-02T00:00:00.000$zone}'));
+      expect(typeConverter.arrayOut([DateTime.utc(2022, 3, 2)]),
+          equals('{2022-03-02T00:00:00.000Z}'));
     });
 
     test('test_array_out bytes (Uint8List)', () {

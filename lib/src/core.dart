@@ -381,6 +381,9 @@ class CoreConnection implements ConnectionInterface {
     }
 
     Socket? openedSocket;
+    // A newer lifecycle took over while connecting: return its future after
+    // the try (awaiting it inside would let its error run this catch).
+    var superseded = false;
     try {
       if (!isUnixSocket && host != null) {
         openedSocket = await Socket.connect(
@@ -398,22 +401,23 @@ class CoreConnection implements ConnectionInterface {
       }
       if (!_isCurrentLifecycle(lifecycleGeneration)) {
         openedSocket.destroy();
-        return _connected.future;
-      }
-      _openingSocket = openedSocket;
-
-      if (sslContext != null) {
-        openedSocket = await _connectSsl(openedSocket);
+        superseded = true;
+      } else {
         _openingSocket = openedSocket;
+        if (sslContext != null) {
+          openedSocket = await _connectSsl(openedSocket);
+          _openingSocket = openedSocket;
+        }
+        if (!_isCurrentLifecycle(lifecycleGeneration)) {
+          openedSocket.destroy();
+          superseded = true;
+        } else {
+          _socket = openedSocket;
+          _openingSocket = null;
+          _hasSocket = true;
+          if (tcpKeepalive) _setKeepAlive(_socket);
+        }
       }
-      if (!_isCurrentLifecycle(lifecycleGeneration)) {
-        openedSocket.destroy();
-        return _connected.future;
-      }
-      _socket = openedSocket;
-      _openingSocket = null;
-      _hasSocket = true;
-      if (tcpKeepalive) _setKeepAlive(_socket);
     } catch (error, stackTrace) {
       openedSocket?.destroy();
       if (identical(_openingSocket, openedSocket)) _openingSocket = null;
@@ -434,6 +438,7 @@ class CoreConnection implements ConnectionInterface {
       }
       return _connected.future;
     }
+    if (superseded) return _connected.future;
 
     _connectionState = ConnectionState.socketConnected;
 
