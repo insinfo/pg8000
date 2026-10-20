@@ -256,5 +256,8 @@ class TransactionContext implements ExecutionContext {
   void _enqueueQuery(Query query) {
     _ensureActive();
     sendQueryQueue.addLast(query);
+    // Without this, a command queued after the transaction awaited real I/O
+    // (another connection, a timer, a file) waited forever: COMMIT hung.
+    connection.scheduleQueuedQueries();
   }
 }

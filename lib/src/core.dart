@@ -106,6 +106,24 @@ class CoreConnection implements ConnectionInterface {
   ConnectionState get connectionState => _connectionState;
   Future<CoreConnection> get whenConnected => _connected.future;
 
+  /// `search_path` applied to every physical session right after
+  /// authentication (and again after each reconnect), for example
+  /// `"public","protocolo"`. The value is sent verbatim to
+  /// `SET search_path TO ...`, so identifiers must already be quoted.
+  final String? searchPath;
+
+  /// Extra SQL executed once per physical session after [searchPath], for
+  /// example `SET statement_timeout = '30s'`. Each entry is a complete
+  /// statement; they run in order through the simple-query protocol before
+  /// [connect] completes, so no user query can observe the session first.
+  final List<String> sessionStatements;
+
+  /// Pending session initialization of the current socket, if any.
+  Query? _sessionInitQuery;
+
+  /// Session SQL queued or running on the socket; transactions wait for it.
+  Query? _sessionInitInFlight;
+
   /// Allows reconnect attempts after a PostgreSQL server restart.
   bool allowAttemptToReconnect = false;
   final ReconnectPolicy reconnectPolicy;
@@ -177,6 +195,9 @@ class CoreConnection implements ConnectionInterface {
     math.Random? reconnectRandom,
     this.statementCacheCapacity = 64,
     TimeZoneSettings? timeZone,
+    this.searchPath,
+    this.sessionStatements = const <String>[],
+    bool numericAsString = false,
   }) : _reconnectRandom = reconnectRandom ?? math.Random() {
     reconnectPolicy.validate();
     if (commandTimeout != null && commandTimeout! <= Duration.zero) {
@@ -193,8 +214,8 @@ class CoreConnection implements ConnectionInterface {
     }
     this.timeZone = timeZone ?? TimeZoneSettings('UTC');
     serverInfo.timeZone = this.timeZone;
-    typeConverter =
-        TypeConverter(textCharset, serverInfo, connectionName: connectionName);
+    typeConverter = TypeConverter(textCharset, serverInfo,
+        connectionName: connectionName, numericAsString: numericAsString);
     _init();
   }
 
@@ -220,6 +241,9 @@ class CoreConnection implements ConnectionInterface {
       reconnectPolicy: settings.reconnectPolicy,
       statementCacheCapacity: settings.statementCacheCapacity,
       timeZone: settings.timeZone,
+      searchPath: settings.searchPath,
+      sessionStatements: settings.sessionStatements,
+      numericAsString: settings.numericAsString,
     );
   }
 
@@ -244,6 +268,15 @@ class CoreConnection implements ConnectionInterface {
     if (applicationName != null) {
       _initParams['application_name'] = applicationName;
     }
+    // Text results are decoded with [textCharset]; ask the server to convert
+    // to that encoding instead of relying on the database default.
+    final clientEncoding = _pgClientEncoding(textCharset);
+    if (clientEncoding != null) {
+      _initParams['client_encoding'] = clientEncoding;
+    }
+    // The text decoders expect ISO output. Only the output style is set; the
+    // server's day/month input order is left untouched.
+    _initParams['datestyle'] = 'ISO';
 
     var initParamsEntries = [..._initParams.entries];
     for (var entry in initParamsEntries) {
@@ -259,6 +292,33 @@ class CoreConnection implements ConnectionInterface {
     if (password is String) {
       passwordBytes = typeConverter.charsetEncode(password!, textCharset);
     }
+  }
+
+  /// PostgreSQL `client_encoding` matching a dargres [textCharset], or null
+  /// when there is no safe equivalent (the server default is kept).
+  static String? _pgClientEncoding(String charset) {
+    switch (charset.toLowerCase()) {
+      case 'utf8':
+      case 'utf-8':
+        return 'UTF8';
+      case 'latin1':
+      case 'iso-8859-1':
+        return 'LATIN1';
+      case 'win1252':
+        return 'WIN1252';
+      default:
+        return null;
+    }
+  }
+
+  String? _sessionInitSql() {
+    final statements = <String>[
+      if (searchPath != null && searchPath!.trim().isNotEmpty)
+        'SET search_path TO $searchPath',
+      for (final statement in sessionStatements)
+        if (statement.trim().isNotEmpty) statement,
+    ];
+    return statements.isEmpty ? null : statements.join(';\n');
   }
 
   void _setKeepAlive(Socket socket) {
@@ -403,11 +463,34 @@ class CoreConnection implements ConnectionInterface {
       return _connected.future;
     }
 
+    final CoreConnection connection;
     try {
-      return await _connected.future.timeout(connectionTimeout);
+      connection = await _connected.future.timeout(connectionTimeout);
     } on TimeoutException catch (error, stackTrace) {
       final exception = PostgresqlException(
           'Timed out while waiting for PostgreSQL startup authentication.',
+          errorCode: error,
+          connectionName: connectionName);
+      if (_isCurrentLifecycle(lifecycleGeneration)) {
+        _destroy(reason: exception, stackTrace: stackTrace);
+      }
+      Error.throwWithStackTrace(exception, stackTrace);
+    }
+    await _awaitSessionInit(lifecycleGeneration);
+    return connection;
+  }
+
+  /// Waits for the session SQL queued by [_handleReadyForQuery]. A failure
+  /// closes the socket: a session without its search_path must not be used.
+  Future<void> _awaitSessionInit(int lifecycleGeneration) async {
+    final init = _sessionInitQuery;
+    if (init == null) return;
+    _sessionInitQuery = null;
+    try {
+      await init.stream.toList().timeout(connectionTimeout);
+    } catch (error, stackTrace) {
+      final exception = PostgresqlException(
+          'PostgreSQL session initialization failed: $error',
           errorCode: error,
           connectionName: connectionName);
       if (_isCurrentLifecycle(lifecycleGeneration)) {
@@ -816,6 +899,11 @@ class CoreConnection implements ConnectionInterface {
     if (_connectionState != ConnectionState.idle) {
       return;
     }
+    // The session SQL sits in the global queue, which is not served while a
+    // transaction is current; let it finish first.
+    if (_sessionInitInFlight != null) {
+      return;
+    }
     _currentTransaction = _transactionQueue.removeFirst();
     Timer.run(_processSendQueryQueue);
   }
@@ -908,6 +996,13 @@ class CoreConnection implements ConnectionInterface {
         connectionName: connectionName);
     Error.throwWithStackTrace(
         exception, lastStackTrace ?? StackTrace.current);
+  }
+
+  /// Schedules the send loop. Called by [TransactionContext] after it queues
+  /// a command: the loop otherwise only wakes on ReadyForQuery, which may have
+  /// fired long before (for example while the transaction awaited other I/O).
+  void scheduleQueuedQueries() {
+    Timer.run(_processSendQueryQueue);
   }
 
   void _processSendQueryQueue() async {
@@ -1688,6 +1783,17 @@ class CoreConnection implements ConnectionInterface {
 
       if (was == ConnectionState.authenticated) {
         hasConnected = true;
+        final initSql = _sessionInitSql();
+        if (initSql != null) {
+          // Ahead of anything queued while the socket was authenticating.
+          final init = Query(initSql)..queryType = QueryType.simple;
+          _sessionInitQuery = init;
+          _sessionInitInFlight = init;
+          _sendQueryQueue.addFirst(init);
+        } else {
+          _sessionInitQuery = null;
+          _sessionInitInFlight = null;
+        }
         _connected.complete(this);
       }
 
@@ -1711,10 +1817,18 @@ class CoreConnection implements ConnectionInterface {
           query.addStreamError(
               terminalError, query.clientStackTrace ?? query.stackTrace);
         }
+        if (identical(query, _sessionInitInFlight)) {
+          _sessionInitInFlight = null;
+        }
         query.finish();
         _query = null;
       }
 
+      // A transaction enqueued while the session was busy (for example during
+      // session initialization) is otherwise only started by a later commit.
+      if (_currentTransaction == null && _transactionQueue.isNotEmpty) {
+        Timer.run(_processTransactionQueue);
+      }
       Timer.run(_processSendQueryQueue);
     } else {
       _destroy();
@@ -1899,7 +2013,7 @@ class CoreConnection implements ConnectionInterface {
         AuthenticationRequestType.md5Password) {
       if (password == null) {
         throw PostgresqlException(
-            'server requesting MD5 password authentication, but no password  was provided',
+            'server requesting MD5 password authentication, but no password was provided',
             connectionName: connectionName);
       }
       var salt = data.sublist(4, 8);

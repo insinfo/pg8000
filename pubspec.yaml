@@ -1,8 +1,10 @@
 name: dargres
-version: 4.0.0
+version: 4.0.1
 description: >
   Dargres is a pure-Dart PostgreSQL driver based on Python pg8000
 homepage: https://github.com/insinfo/pg8000
+repository: https://github.com/insinfo/pg8000
+issue_tracker: https://github.com/insinfo/pg8000/issues
 
 environment:
   sdk: ^3.6.0

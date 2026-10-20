@@ -98,7 +98,12 @@ class TypeConverter {
   ServerInfo serverInfo;
   String textCharset;
 
-  TypeConverter(this.textCharset, this.serverInfo, {this.connectionName});
+  /// Decode `numeric` as the exact server text (like `postgres`/
+  /// `postgres_fork`) instead of a `double`, which loses digits past ~15.
+  bool numericAsString;
+
+  TypeConverter(this.textCharset, this.serverInfo,
+      {this.connectionName, this.numericAsString = false});
 
   bool boolIn(data) {
     return data == "t";
@@ -295,8 +300,10 @@ class TypeConverter {
     return _parseArray<double?>(data, floatIn);
   }
 
-  List<double?>? numericArrayIn(dynamic data) {
-    return _parseArray<double?>(data, floatIn);
+  List<Object?>? numericArrayIn(dynamic data) {
+    return numericAsString
+        ? _parseArray<String?>(data, stringIn)
+        : _parseArray<double?>(data, floatIn);
   }
 
   List<Map?>? jsonArrayIn(dynamic data) {
@@ -335,7 +342,7 @@ class TypeConverter {
   }
 
   dynamic numericIn(data) {
-    return double.parse(data);
+    return numericAsString ? data : double.parse(data);
   }
 
 //decode _JSON and _JSONB

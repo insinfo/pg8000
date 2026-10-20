@@ -357,8 +357,9 @@ class ResultSchema {
         return _parseTextInt;
       case _oidFloat4:
       case _oidFloat8:
-      case _oidNumeric:
         return _parseTextDouble;
+      case _oidNumeric:
+        return converter.numericAsString ? textDecoder : _parseTextDouble;
       case _oidChar:
       case _oidName:
       case _oidText:

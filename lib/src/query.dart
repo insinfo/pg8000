@@ -133,13 +133,17 @@ class Query {
 
   void _formatSql(dynamic params) {
     var parameters = params;
+    final standardConformingStrings =
+        connection?.serverInfo.standardConformingStrings?.toLowerCase() !=
+            'off';
 
     if (placeholderIdentifier == PlaceholderIdentifier.onlyQuestionMark) {
       if (params is! List) {
         throw ArgumentError.value(
             params, 'params', 'Question-mark placeholders require a List.');
       }
-      _sql = toStatement2(_sql);
+      _sql = toStatement2(_sql,
+          standardConformingStrings: standardConformingStrings);
     } else if (placeholderIdentifier == PlaceholderIdentifier.pgDefault) {
       if (params is! List) {
         throw ArgumentError.value(
@@ -151,7 +155,8 @@ class Query {
             'the [params] argument must be a `Map` when using placeholderIdentifier != pgDefault | onlyQuestionMark ');
       }
       final result = toStatement(_sql, params,
-          placeholderIdentifier: placeholderIdentifier.value);
+          placeholderIdentifier: placeholderIdentifier.value,
+          standardConformingStrings: standardConformingStrings);
       _sql = result[0];
       parameters = result[1];
     }

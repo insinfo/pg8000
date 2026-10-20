@@ -26,7 +26,10 @@ class PostgreSqlPool {
   })  : _permits = Pool(size,
             timeout: timeout, maxPending: maxPendingOperations),
         _connectionMutex =
-            Pool(1, maxPending: size > 1 ? size - 1 : 0) {
+            Pool(1, maxPending: size > 1 ? size - 1 : 0),
+        _connections =
+            List<CoreConnection?>.filled(size > 0 ? size : 0, null),
+        _leased = List<bool>.filled(size > 0 ? size : 0, false) {
     if (size <= 0) {
       throw RangeError.value(size, 'size', 'Must be greater than zero.');
     }
@@ -42,8 +45,10 @@ class PostgreSqlPool {
   final int maxPendingOperations;
   final Pool _permits;
   final Pool _connectionMutex;
-  final List<CoreConnection> _connections = <CoreConnection>[];
-  final List<bool> _leased = <bool>[];
+  /// One slot per permit. A slot stays `null` until an operation needs it:
+  /// sockets are opened on demand, never all at once.
+  final List<CoreConnection?> _connections;
+  final List<bool> _leased;
   int _cursor = 0;
   bool _closed = false;
   Future<void>? _closeFuture;
@@ -53,8 +58,9 @@ class PostgreSqlPool {
 
   /// Physical sockets currently retained by this pool; never exceeds [size].
   int get openConnectionCount => _connections
-      .where(
-          (connection) => connection.connectionState != ConnectionState.closed)
+      .where((connection) =>
+          connection != null &&
+          connection.connectionState != ConnectionState.closed)
       .length;
 
   /// Operations that currently own one of the fixed connection slots.
@@ -92,55 +98,59 @@ class PostgreSqlPool {
     return connection;
   }
 
-  Future<void> _open() async {
-    if (_connections.isNotEmpty) return;
-    if (_closed) throw StateError('PostgreSQL pool is closed.');
+  /// Reserves a free slot. An idle open connection is preferred, so sequential
+  /// work keeps reusing one socket (and its statement cache) and the pool only
+  /// grows when operations actually overlap. Opening the socket of an empty
+  /// slot happens outside the mutex, after the slot is reserved.
+  Future<_ConnectionLease> _leaseConnection() async {
+    final index = await _connectionMutex.withResource(() {
+      if (_closed) throw StateError('PostgreSQL pool is closed.');
+      int? empty;
+      for (var offset = 0; offset < size; offset++) {
+        final index = (_cursor + offset) % size;
+        if (_leased[index]) continue;
+        final connection = _connections[index];
+        if (connection != null &&
+            connection.connectionState != ConnectionState.closed) {
+          _leased[index] = true;
+          _cursor = (index + 1) % size;
+          return index;
+        }
+        empty ??= index;
+      }
+      if (empty == null) {
+        throw StateError('Pool permit/connection lease invariant violated.');
+      }
+      _leased[empty] = true;
+      return empty;
+    });
 
-    final created = <CoreConnection>[];
     try {
-      final futures = List<Future<CoreConnection>>.generate(size, (index) async {
-        final connection = await _newConnection(index);
-        created.add(connection);
-        return connection;
-      }, growable: false);
-      _connections.addAll(await Future.wait(futures));
-      _leased.addAll(List<bool>.filled(size, false));
+      var connection = _connections[index];
+      if (connection == null) {
+        connection = await _newConnection(index);
+        if (_closed) {
+          await connection.close();
+          throw StateError('PostgreSQL pool is closed.');
+        }
+        _connections[index] = connection;
+      } else if (connection.connectionState == ConnectionState.closed) {
+        connection = await _replaceConnection(index, connection);
+      } else if (connection.connectionState ==
+              ConnectionState.socketConnecting ||
+          connection.connectionState == ConnectionState.authenticating) {
+        await connection.whenConnected;
+      }
+      return _ConnectionLease(index, connection);
     } catch (_) {
-      await Future.wait(created.map((connection) => connection.close()));
+      _leased[index] = false;
       rethrow;
     }
   }
 
-  Future<_ConnectionLease> _leaseConnection() {
-    return _connectionMutex.withResource(() async {
-      await _open();
-      for (var offset = 0; offset < size; offset++) {
-        final index = (_cursor + offset) % size;
-        if (_leased[index]) continue;
-        _leased[index] = true;
-        _cursor = (index + 1) % size;
-        try {
-          var connection = _connections[index];
-          if (connection.connectionState == ConnectionState.closed) {
-            connection = await _replaceConnection(index, connection);
-          } else if (connection.connectionState ==
-                  ConnectionState.socketConnecting ||
-              connection.connectionState == ConnectionState.authenticating) {
-            await connection.whenConnected;
-          }
-          return _ConnectionLease(index, connection);
-        } catch (_) {
-          _leased[index] = false;
-          rethrow;
-        }
-      }
-      throw StateError('Pool permit/connection lease invariant violated.');
-    });
-  }
-
   Future<CoreConnection> _replaceConnection(
-      int index, CoreConnection previous) async {
-    await previous.close();
+      int index, CoreConnection? previous) async {
+    await previous?.close();
     if (_closed) throw StateError('PostgreSQL pool is closed.');
     try {
       final replacement = await _newConnection(index);
@@ -368,9 +378,11 @@ class PostgreSqlPool {
     _closed = true;
     await _permits.close();
     await _connectionMutex.close();
-    await Future.wait(_connections.map((connection) => connection.close()));
-    _connections.clear();
-    _leased.clear();
+    await Future.wait(_connections
+        .whereType<CoreConnection>()
+        .map((connection) => connection.close()));
+    _connections.fillRange(0, _connections.length, null);
+    _leased.fillRange(0, _leased.length, false);
   }
 }
 

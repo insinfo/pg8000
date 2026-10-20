@@ -25,10 +25,15 @@ class PlaceholderIdentifier {
 /// Repeated names reuse the same position. Placeholder-like text inside SQL
 /// strings, quoted identifiers, comments, and dollar-quoted bodies is kept
 /// verbatim. Returns the rewritten SQL followed by the ordered values.
+///
+/// [standardConformingStrings] mirrors the server setting of the same name
+/// (on by default since PostgreSQL 9.1): when true, a backslash only escapes
+/// inside `E'...'` literals, so `'C:'` is a complete literal.
 List<dynamic> toStatement(
   String query,
   Map params, {
   String placeholderIdentifier = ':',
+  bool standardConformingStrings = true,
 }) {
   if (placeholderIdentifier.length != 1) {
     throw ArgumentError.value(
@@ -44,6 +49,7 @@ List<dynamic> toStatement(
     query,
     placeholderIdentifier,
     named: true,
+    standardConformingStrings: standardConformingStrings,
     replacement: (name) {
       final existing = positions[name];
       if (existing != null) return '\$$existing';
@@ -62,12 +68,14 @@ List<dynamic> toStatement(
 }
 
 /// Rewrites explicit question-mark parameters to PostgreSQL `$n` parameters.
-String toStatement2(String query) {
+/// See [toStatement] for [standardConformingStrings].
+String toStatement2(String query, {bool standardConformingStrings = true}) {
   var position = 0;
   return _rewriteSqlPlaceholders(
     query,
     '?',
     named: false,
+    standardConformingStrings: standardConformingStrings,
     replacement: (_) => '\$${++position}',
   );
 }
@@ -76,6 +84,7 @@ String _rewriteSqlPlaceholders(
   String query,
   String marker, {
   required bool named,
+  required bool standardConformingStrings,
   required String Function(String name) replacement,
 }) {
   if (!query.contains(marker)) return query;
@@ -90,7 +99,9 @@ String _rewriteSqlPlaceholders(
     final codeUnit = query.codeUnitAt(index);
 
     if (codeUnit == 0x27) {
-      index = _skipSingleQuoted(query, index);
+      index = _skipSingleQuoted(query, index,
+          backslashEscapes:
+              !standardConformingStrings || _isEscapeStringPrefix(query, index));
       continue;
     }
     if (codeUnit == 0x22) {
@@ -150,11 +161,23 @@ String _rewriteSqlPlaceholders(
   return output.toString();
 }
 
-int _skipSingleQuoted(String query, int index) {
+/// Whether the quote at [quoteIndex] opens an `E'...'` escape string. The
+/// `E` must not be the tail of a longer identifier such as `name'`.
+bool _isEscapeStringPrefix(String query, int quoteIndex) {
+  if (quoteIndex == 0) return false;
+  final prefix = query.codeUnitAt(quoteIndex - 1);
+  if (prefix != 0x45 && prefix != 0x65) return false;
+  if (quoteIndex == 1) return true;
+  final before = query.codeUnitAt(quoteIndex - 2);
+  return !(_isPlaceholderNameCodeUnit(before) || before == 0x24);
+}
+
+int _skipSingleQuoted(String query, int index,
+    {required bool backslashEscapes}) {
   index++;
   while (index < query.length) {
     final current = query.codeUnitAt(index);
-    if (current == 0x5c && index + 1 < query.length) {
+    if (backslashEscapes && current == 0x5c && index + 1 < query.length) {
       index += 2;
     } else if (current == 0x27) {
       if (index + 1 < query.length && query.codeUnitAt(index + 1) == 0x27) {

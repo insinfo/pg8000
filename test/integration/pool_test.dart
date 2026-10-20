@@ -52,6 +52,26 @@ void main() {
       expect(pool.pendingOperationCount, 0);
     });
 
+    test('opens sockets on demand and reuses an idle one', () async {
+      final pool = PostgreSqlPool(4, _settings());
+      addTearDown(pool.close);
+      expect(pool.openConnectionCount, 0);
+
+      final pids = <Object?>{};
+      for (var i = 0; i < 5; i++) {
+        final rows = await pool.queryMaps('SELECT pg_backend_pid() AS pid');
+        pids.add(rows.single['pid']);
+      }
+      expect(pids, hasLength(1));
+      expect(pool.openConnectionCount, 1);
+
+      await Future.wait(List.generate(
+        2,
+        (_) => pool.queryMaps('SELECT pg_sleep(0.05)'),
+      ));
+      expect(pool.openConnectionCount, 2);
+    });
+
     test('owns one connection for the complete transaction', () async {
       final pool = PostgreSqlPool(2, _settings());
       addTearDown(pool.close);

@@ -112,6 +112,15 @@ class ConnectionSettings {
   final ReconnectPolicy reconnectPolicy;
   final int statementCacheCapacity;
 
+  /// See [CoreConnection.searchPath].
+  String? searchPath;
+
+  /// See [CoreConnection.sessionStatements].
+  List<String> sessionStatements;
+
+  /// Decode `numeric` as the exact server text instead of a lossy `double`.
+  bool numericAsString;
+
   ConnectionSettings({
     required this.user,
     this.host = defaultHost,
@@ -133,6 +142,9 @@ class ConnectionSettings {
     this.reconnectPolicy = const ReconnectPolicy(),
     this.statementCacheCapacity = 64,
     this.timeZone,
+    this.searchPath,
+    this.sessionStatements = const <String>[],
+    this.numericAsString = false,
   }) {
     reconnectPolicy.validate();
     if (commandTimeout != null && commandTimeout! <= Duration.zero) {
@@ -171,6 +183,9 @@ class ConnectionSettings {
       reconnectPolicy: reconnectPolicy,
       statementCacheCapacity: statementCacheCapacity,
       timeZone: timeZone,
+      searchPath: searchPath,
+      sessionStatements: List<String>.of(sessionStatements),
+      numericAsString: numericAsString,
     );
   }
 
