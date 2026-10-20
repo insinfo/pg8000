@@ -131,19 +131,21 @@ class TypeConverter {
   }
 
   /// Dart double to postgresql
+  /// Parameter and array element text, never SQL: a quoted `'nan'` was an
+  /// invalid float8 (an array with NaN or an infinity failed with 22P02).
   dynamic floatOut(n) {
-    if (n.isNaN) return "'nan'";
-    if (n == double.infinity) return "'infinity'";
-    if (n == double.negativeInfinity) return "'-infinity'";
+    if (n.isNaN) return 'NaN';
+    if (n == double.infinity) return 'Infinity';
+    if (n == double.negativeInfinity) return '-Infinity';
     return n.toString();
   }
 
   // numericOut
   /// dart num type to postgresql numeric type
   dynamic numericOut(n) {
-    if (n.isNaN) return "'nan'";
-    if (n == double.infinity) return "'infinity'";
-    if (n == double.negativeInfinity) return "'-infinity'";
+    if (n.isNaN) return 'NaN';
+    if (n == double.infinity) return 'Infinity';
+    if (n == double.negativeInfinity) return '-Infinity';
     return n.toString();
   }
 
@@ -191,8 +193,9 @@ class TypeConverter {
       cs.add(c);
     }
     val = cs.join();
+    // PostgreSQL reads an unquoted NULL in any case as a null element.
     if (val.isEmpty ||
-        val == "NULL" ||
+        val.toUpperCase() == "NULL" ||
         Utils.stringContainsSpace(val) ||
         Utils.stringContains(val, ["{", "}", ",", "\\"])) {
       val = '"$val"';
@@ -207,21 +210,24 @@ class TypeConverter {
   /// read it in the session time zone instead of the Dart process zone (a
   /// process in UTC with a session in America/Sao_Paulo stored timestamptz
   /// three hours off); a TZDateTime ends with its own offset already.
+  ///
+  /// PostgreSQL has no year 0 and rejects signed years (`-0043`, `+010000`):
+  /// astronomical year 0 is `0001 BC`, and years above 9999 have no sign.
   String dateTimeOut(DateTime v) {
     String two(int n) => n.toString().padLeft(2, '0');
     final year = v.year;
-    final sign = year < 0 ? '-' : (year > 9999 ? '+' : '');
-    final y =
-        '$sign${year.abs().toString().padLeft(year.abs() > 9999 ? 6 : 4, '0')}';
+    final bc = year <= 0;
+    final y = (bc ? 1 - year : year).toString().padLeft(4, '0');
     final ms = v.millisecond.toString().padLeft(3, '0');
     final us = v.microsecond == 0 ? '' : v.microsecond.toString().padLeft(3, '0');
     final fields = '$y-${two(v.month)}-${two(v.day)}T${two(v.hour)}:'
         '${two(v.minute)}:${two(v.second)}.$ms$us';
-    if (v.isUtc) return '${fields}Z';
+    final era = bc ? ' BC' : '';
+    if (v.isUtc) return '${fields}Z$era';
     final offset = v.timeZoneOffset.inMinutes;
     final zone = '${offset < 0 ? '-' : '+'}'
         '${two(offset.abs() ~/ 60)}:${two(offset.abs() % 60)}';
-    return '$fields$zone';
+    return '$fields$zone$era';
   }
 
   /// Dart Map to postgresql
@@ -229,10 +235,16 @@ class TypeConverter {
     return jsonEncode(v);
   }
 
-  List<T?>? _parseArray<T>(String data, Function adapter) {
+  /// A one-dimensional array is a `List<T?>`; a multidimensional one is a
+  /// list of those lists (casting every element to T failed for it).
+  List<Object?>? _parseArray<T>(String data, Function adapter) {
     var state = ArrayState.out;
     var stack = [[]];
+    // The lists made for `{`: an element can be a List too (bytea, json).
+    final levels = Set<List>.identity();
     var val = [];
+    // `[0:1]={1,2}`: bounds other than 1 come first (they failed to parse).
+    if (data.startsWith('[')) data = data.substring(data.indexOf('=') + 1);
     var dataSplit = data.split('');
 
     for (var c in dataSplit) {
@@ -249,6 +261,7 @@ class TypeConverter {
       if (state == ArrayState.out) {
         if (c == '{') {
           var a = [];
+          levels.add(a);
           stack[stack.length - 1].add(a);
           stack.add(a);
         } else if (c == '}') {
@@ -278,9 +291,18 @@ class TypeConverter {
     }
     var result = stack[0][0];
     if (result is List) {
-      return result.map((e) => e as T?).toList();
+      return _typedArray<T>(result, levels);
     }
     return null;
+  }
+
+  List<Object?> _typedArray<T>(List values, Set<List> levels) {
+    if (values.isNotEmpty && levels.contains(values.first)) {
+      return [
+        for (final value in values) _typedArray<T>(value as List, levels)
+      ];
+    }
+    return values.map((e) => e as T?).toList();
   }
 
   dynamic boolArrayIn(dynamic data) {
@@ -302,21 +324,25 @@ class TypeConverter {
   }
 
   /// Returns `List<String>`.
-  List<String?>? stringArrayIn(dynamic data) {
+  List<Object?>? stringArrayIn(dynamic data) {
     return _parseArray<String?>(data, stringIn);
   }
 
   /// Returns `List<String>`.
-  List<String?>? intervalArrayIn(dynamic data) {
+  List<Object?>? intervalArrayIn(dynamic data) {
     return _parseArray<String?>(data, stringIn);
   }
 
-  List<DateTime?>? dateArrayIn(dynamic data) {
+  List<Object?>? dateArrayIn(dynamic data) {
     return _parseArray<DateTime?>(data, dateIn);
   }
 
-  List<double?>? floatArrayIn(dynamic data) {
+  List<Object?>? floatArrayIn(dynamic data) {
     return _parseArray<double?>(data, floatIn);
+  }
+
+  List<Object?>? realArrayIn(dynamic data) {
+    return _parseArray<double?>(data, realIn);
   }
 
   List<Object?>? numericArrayIn(dynamic data) {
@@ -325,19 +351,20 @@ class TypeConverter {
         : _parseArray<double?>(data, floatIn);
   }
 
-  List<Map?>? jsonArrayIn(dynamic data) {
-    return _parseArray<Map?>(data, jsonIn);
+  /// Elements are any JSON value (object, array, number, string, null).
+  List<Object?>? jsonArrayIn(dynamic data) {
+    return _parseArray<Object?>(data, jsonIn);
   }
 
-  List<String?>? timeArrayIn(dynamic data) {
+  List<Object?>? timeArrayIn(dynamic data) {
     return _parseArray<String?>(data, stringIn);
   }
 
-  List<DateTime?>? timestampArrayIn(dynamic data) {
+  List<Object?>? timestampArrayIn(dynamic data) {
     return _parseArray<DateTime?>(data, timestampIn);
   }
 
-  List<DateTime?>? timestampTzArrayIn(dynamic data) {
+  List<Object?>? timestampTzArrayIn(dynamic data) {
     return _parseArray<DateTime?>(data, timestampTzIn);
   }
 
@@ -358,6 +385,52 @@ class TypeConverter {
 
   dynamic floatIn(data) {
     return double.parse(data);
+  }
+
+  /// float4 text (`'1.1'`) as the float4 value widened to double
+  /// (1.100000023841858), the value the binary format gives; `double.parse`
+  /// alone gave 1.1, so a cold (text) and a warm (binary) read differed.
+  static double parseFloat4Text(String data) =>
+      (Float32List(1)..[0] = double.parse(data))[0];
+
+  dynamic realIn(data) => parseFloat4Text(data);
+
+  /// `money` as the exact decimal amount (`'R$ 1.234,56'` → `'1234.56'`,
+  /// `'-$0.05'` / `'($0.05)'` → `'-0.05'`): the server text follows
+  /// lc_monetary (symbol, separators), which made it unusable as a number.
+  /// The decimal separator is the last `.` or `,` followed by one or two
+  /// digits.
+  static String parseMoneyText(String text) {
+    final negative = text.contains('-') || text.trim().startsWith('(');
+    var integer = StringBuffer();
+    var fraction = '';
+    final lastSeparator = text.lastIndexOf(RegExp(r'[.,]'));
+    var end = text.length;
+    if (lastSeparator >= 0) {
+      final after = text.substring(lastSeparator + 1).replaceAll(
+          RegExp(r'[^0-9]'), '');
+      final rest = text.substring(lastSeparator + 1);
+      final onlyDigitsThenSymbol =
+          RegExp(r'^[0-9]{1,2}(?:[^0-9.,]*)$').hasMatch(rest);
+      if (onlyDigitsThenSymbol) {
+        fraction = after;
+        end = lastSeparator;
+      }
+    }
+    for (final unit in text.substring(0, end).codeUnits) {
+      if (unit >= 0x30 && unit <= 0x39) integer.writeCharCode(unit);
+    }
+    var digits = integer.toString().replaceFirst(RegExp(r'^0+(?=.)'), '');
+    if (digits.isEmpty) digits = '0';
+    final cents = fraction.padRight(2, '0');
+    final isZero = RegExp(r'^0*$').hasMatch(digits + cents);
+    return '${negative && !isZero ? '-' : ''}$digits.$cents';
+  }
+
+  dynamic moneyIn(data) => parseMoneyText(data);
+
+  List<Object?>? moneyArrayIn(dynamic data) {
+    return _parseArray<String?>(data, moneyIn);
   }
 
   dynamic numericIn(data) {
@@ -480,9 +553,9 @@ class TypeConverter {
       case macaddr:
         return stringIn(value); // macaddr type
       case money:
-        return stringIn(value); // money
+        return moneyIn(value); // money
       case moneyArray:
-        return stringArrayIn(value); // money[]
+        return moneyArrayIn(value); // money[]
       case name:
         return stringIn(value); // name
       case nameArray:
@@ -500,9 +573,9 @@ class TypeConverter {
       case intervalArray:
         return intervalArrayIn(value); // interval[]
       case real:
-        return floatIn(value); // float4
+        return realIn(value); // float4
       case realArray:
-        return floatArrayIn(value); // float4[]
+        return realArrayIn(value); // float4[]
       case smallint:
         return intIn(value); // int2
       case smallintArray:

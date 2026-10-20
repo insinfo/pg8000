@@ -121,6 +121,9 @@ class ConnectionSettings {
   /// Decode `numeric` as the exact server text instead of a lossy `double`.
   bool numericAsString;
 
+  /// See [CoreConnection.queueConcurrentCalls].
+  bool queueConcurrentCalls;
+
   ConnectionSettings({
     required this.user,
     this.host = defaultHost,
@@ -145,6 +148,7 @@ class ConnectionSettings {
     this.searchPath,
     this.sessionStatements = const <String>[],
     this.numericAsString = false,
+    this.queueConcurrentCalls = true,
   }) {
     reconnectPolicy.validate();
     if (commandTimeout != null && commandTimeout! <= Duration.zero) {
@@ -186,6 +190,7 @@ class ConnectionSettings {
       searchPath: searchPath,
       sessionStatements: List<String>.of(sessionStatements),
       numericAsString: numericAsString,
+      queueConcurrentCalls: queueConcurrentCalls,
     );
   }
 

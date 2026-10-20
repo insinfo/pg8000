@@ -6,6 +6,14 @@ Details: [doc/release_notes_4.0.1.md](doc/release_notes_4.0.1.md).
 
 ### Fixed
 
+- `money` (and `money[]`) is the exact decimal amount (`'1234.56'`,
+  `'-0.05'`), as postgres_fork returns it. It was the lc_monetary text
+  (`'R$ 1.234,56'`), with the currency symbol and the locale's separators.
+- `float4` read in text (cold executions, simple protocol) gave the shortest
+  decimal (`0.1`), and in binary (warm executions) the float4 value
+  (`0.10000000149011612`), so the same query returned two different doubles.
+  Text is now read as a float4 and widened, as the binary format; `float4[]`
+  too.
 - DateTime parameters carry their zone: a local DateTime was sent without its
   offset, so the server read it in the session time zone (a process in UTC
   with a session in America/Sao_Paulo stored timestamptz three hours off).
@@ -17,6 +25,42 @@ Details: [doc/release_notes_4.0.1.md](doc/release_notes_4.0.1.md).
   time zone (DST-gap shift, BC dates and LMT offsets now match binary).
 - `?` placeholders after a literal ending in `\` are rewritten correctly.
 - Typo in the missing MD5 password error message.
+- A query issued on a `CoreConnection` (not on the `TransactionContext`) while
+  another caller's `runInTransaction` callback ran failed on the extended
+  protocol (`queryNamed`, `queryUnnamed`, `queryMaps`, ...: "A transaction is
+  active"); it now waits for the commit or rollback, as the simple protocol
+  did. Issued from the callback itself, it runs in the transaction (it threw,
+  or for `execute` waited forever). See `queueConcurrentCalls`.
+- A queued transaction no longer runs ahead of queries that arrived before
+  it, and a query that waited for another caller's preparation of the same
+  statement keeps its place: queries and transactions run in arrival order.
+- `runInTransaction`/`beginTransaction` from inside a `runInTransaction`
+  callback fails with a `StateError` (it waited for itself forever).
+- `COPY ... FROM STDIN` hung the connection, and every caller queued behind
+  it, forever; it now fails with SQLSTATE 57014 (there is no COPY IN API).
+- An unnamed prepared statement (`prepareStatement(isUnamedStatement: true)`)
+  executed whatever statement was parsed unnamed last, e.g. any caller's
+  `queryUnnamed`: silently wrong results. It is parsed again on execution.
+- `CoreConnection.executeStatement(isDeallocate: true)` reported a failed
+  execution as an uncaught asynchronous error.
+- Text `float8` and `numeric` were not correctly rounded (`0.1 + 0.2` read as
+  `0.3000000000000001`, the float8 maximum as `Infinity`, subnormals as `0`):
+  a cold (text) and a warm (binary) execution of one statement returned
+  different doubles.
+- Array parameters: a `'null'` string element was sent as SQL NULL, and a
+  NaN or infinite double element failed with 22P02.
+- Multidimensional arrays, arrays with explicit bounds (`[0:1]={1,2}`) and
+  `json[]`/`jsonb[]` with non-object elements failed to decode.
+- `DateTime` parameters with a year before 1 (BC) or after 9999 were
+  rejected by the server.
+- `DEALLOCATE PREPARE ALL`, and `DEALLOCATE ALL`/`DISCARD ALL` after other
+  statements of a simple query, left the statement cache stale: the next
+  cached query failed with 26000.
+- A query issued on the connection from a `runInTransaction` callback after
+  the connection died under that transaction ran outside it, autocommitted
+  on the reconnected session; it now fails with a `StateError`.
+- With `textCharset: 'ascii'`, a non-ASCII NOTICE (any localized one),
+  notification payload or ParameterStatus closed the connection.
 
 ### Added
 
@@ -25,6 +69,9 @@ Details: [doc/release_notes_4.0.1.md](doc/release_notes_4.0.1.md).
 - `client_encoding` (from `textCharset`) and `DateStyle=ISO` in the startup
   packet.
 - Opt-in `numericAsString` for exact `numeric` values.
+- `queueConcurrentCalls` (default `true`) on `ConnectionSettings` and
+  `CoreConnection`; `false` makes queries from outside a running transaction
+  fail instead of waiting.
 - `repository` and `issue_tracker` in the pubspec.
 
 ## 4.0.0

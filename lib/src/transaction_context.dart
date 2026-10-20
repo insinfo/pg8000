@@ -10,6 +10,11 @@ class TransactionContext implements ExecutionContext {
   bool _active = true;
   Object? terminalError;
 
+  /// True when started by [CoreConnection.runInTransaction]: commands from
+  /// outside its callback can wait for it (they cannot tell, for a
+  /// transaction opened with [CoreConnection.beginTransaction]).
+  bool runByCallback = false;
+
   bool get isActive => _active;
 
   TransactionContext(this.transactionId, this.connection);

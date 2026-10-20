@@ -18,6 +18,7 @@ const int closeComplete = 51;
 const int parameterDescription = 116;
 const int notificationResponse = 65;
 const int copyData = 100;
+const int copyInResponse = 71;
 const int functionCallResponse = 86;
 
 const int bindMessage = 66;
@@ -29,6 +30,7 @@ const int passwordMessage = 112;
 const int describeMessage = 68;
 const int terminateMessageCode = 88;
 const int closeMessage = 67;
+const int copyFailMessage = 102;
 
 /// PostgreSQL CancelRequest protocol code (1234 << 16 | 5678).
 const int cancelRequestCode = 80877102;

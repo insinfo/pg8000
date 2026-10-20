@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../column_description.dart';
@@ -356,6 +355,8 @@ class ResultSchema {
       case _oidXid:
         return _parseTextInt;
       case _oidFloat4:
+        return (bytes, offset, length) => (Float32List(1)
+          ..[0] = _parseTextDouble(bytes, offset, length))[0];
       case _oidFloat8:
         return _parseTextDouble;
       case _oidNumeric:
@@ -589,6 +590,12 @@ class ResultSchema {
     return negative ? -value : value;
   }
 
+  /// Powers of ten that are exact doubles.
+  static const List<double> _exactPowersOfTen = <double>[
+    1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7,
+    1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
+  ];
+
   static double _parseTextDouble(Uint8List bytes, int offset, int length) {
     if (_asciiEquals(bytes, offset, length, 'NaN')) return double.nan;
     if (_asciiEquals(bytes, offset, length, 'Infinity')) {
@@ -607,62 +614,33 @@ class ResultSchema {
       cursor++;
     }
 
-    var value = 0.0;
+    // Up to 15 digits without an exponent: the digits and the power of ten
+    // are exact doubles, so one division rounds correctly. Accumulating
+    // digit * 0.1^n did not (0.1 + 0.2 read as 0.3000000000000001 and the
+    // float8 maximum as Infinity); anything else goes to double.parse.
+    var mantissa = 0;
     var digits = 0;
+    var fractionDigits = -1;
     while (cursor < end) {
-      final digit = bytes[cursor] - 0x30;
-      if (digit < 0 || digit > 9) break;
-      value = value * 10.0 + digit;
-      digits++;
-      cursor++;
-    }
-
-    if (cursor < end && bytes[cursor] == 0x2e) {
-      cursor++;
-      var scale = 0.1;
-      while (cursor < end) {
-        final digit = bytes[cursor] - 0x30;
-        if (digit < 0 || digit > 9) break;
-        value += digit * scale;
-        scale *= 0.1;
+      final byte = bytes[cursor];
+      final digit = byte - 0x30;
+      if (digit >= 0 && digit <= 9) {
+        mantissa = mantissa * 10 + digit;
         digits++;
-        cursor++;
+        if (fractionDigits >= 0) fractionDigits++;
+      } else if (byte == 0x2e && fractionDigits < 0) {
+        fractionDigits = 0;
+      } else {
+        break;
       }
-    }
-    if (digits == 0) {
-      throw const FormatException('Invalid floating value.');
-    }
-
-    if (cursor < end && (bytes[cursor] == 0x65 || bytes[cursor] == 0x45)) {
       cursor++;
-      var exponentNegative = false;
-      if (cursor < end && (bytes[cursor] == 0x2d || bytes[cursor] == 0x2b)) {
-        exponentNegative = bytes[cursor] == 0x2d;
-        cursor++;
-      }
-      if (cursor == end) {
-        throw const FormatException('Invalid floating exponent.');
-      }
-      var exponent = 0;
-      var exponentDigits = 0;
-      while (cursor < end) {
-        final digit = bytes[cursor++] - 0x30;
-        if (digit < 0 || digit > 9) {
-          throw const FormatException('Invalid floating exponent.');
-        }
-        exponent = exponent * 10 + digit;
-        exponentDigits++;
-      }
-      if (exponentDigits == 0) {
-        throw const FormatException('Invalid floating exponent.');
-      }
-      final factor = math.pow(10.0, exponent).toDouble();
-      value = exponentNegative ? value / factor : value * factor;
     }
-    if (cursor != end) {
-      throw const FormatException('Invalid floating value.');
+    if (cursor == end && digits > 0 && digits <= 15) {
+      final value = mantissa /
+          _exactPowersOfTen[fractionDigits < 0 ? 0 : fractionDigits];
+      return negative ? -value : value;
     }
-    return negative ? -value : value;
+    return double.parse(String.fromCharCodes(bytes, offset, end));
   }
 
   static bool _asciiEquals(

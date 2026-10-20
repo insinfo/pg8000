@@ -118,6 +118,38 @@ the scale (`150.50` → `150.5`). With `numericAsString: true` (on
 as `postgres`/`postgres_fork` do; `numeric[]` becomes `List<String?>`. The
 default is unchanged.
 
+### Concurrent callers of one connection: `queueConcurrentCalls`
+
+One `CoreConnection` shared by concurrent callers (an HTTP server with a
+single connection, for example) queues their queries. During a
+`runInTransaction` callback:
+
+| Query issued | 4.0.0 | 4.0.1 |
+|---|---|---|
+| on the connection, by another caller, simple protocol (`execute`, `querySimple`) | waited for the transaction | same |
+| on the connection, by another caller, extended protocol (`queryNamed`, `queryUnnamed`, `queryMaps`, ...) | `StateError` "A transaction is active" | waits for the commit or rollback |
+| on the connection, from the callback (instead of the `TransactionContext`) | `StateError`, or waited forever (`execute`) | runs in the transaction |
+| `runInTransaction` / `beginTransaction` from the callback | waited forever | `StateError` |
+
+The callback is recognized through a `Zone` value, so queries from anything
+it starts (`Future.wait`, timers) belong to the transaction too. Do not wait,
+inside the callback, for work started outside it that uses the same
+connection: that work waits for the transaction, which waits for it.
+
+Queries and transactions run in arrival order: a transaction queued behind
+another one no longer runs ahead of queries that arrived before it (under
+constant transactional load those could wait indefinitely).
+
+During a transaction opened with `beginTransaction()` (no callback), dargres
+cannot tell its owner from other callers: extended-protocol queries on the
+connection still fail, simple-protocol ones still wait.
+
+With `queueConcurrentCalls: false`, queries on the connection from outside a
+running transaction fail with a `StateError` instead of waiting (simple
+protocol included), which shows a connection shared by mistake. Queries
+outside transactions are queued either way, as before. A pool lends each
+connection to one caller at a time, so this changes nothing for it.
+
 ## Known differences from `postgres_fork` (unchanged)
 
 - Arrays decode to nullable element lists (`List<int?>`, `List<String?>`);

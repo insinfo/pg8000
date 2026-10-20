@@ -229,8 +229,9 @@ array['{"sender":"pablo","body":"us"}']::json[], array['{"sender":"pablo"}']::js
       var res = await con
           .querySimple(r'''SELECT float4_type FROM postgresql_types;''');
       expect(res.first.first.runtimeType, double);
+      // The float4 value of 2.3, as the binary format gives it.
       expect(res, [
-        [2.3]
+        [2.299999952316284]
       ]);
     });
     test('SELECT float8 type', () async {

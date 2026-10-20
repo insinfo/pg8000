@@ -166,6 +166,54 @@ class CoreConnection implements ConnectionInterface {
   TransactionContext? _currentTransaction;
   int _transactionId = 0;
 
+  /// Arrival order of the queries in [_sendQueryQueue] and of the queued
+  /// transactions: a transaction does not jump ahead of queries that arrived
+  /// before it, and queries do not jump ahead of an earlier transaction.
+  /// Session and retried queries (put first) have none and go first.
+  final Expando<int> _arrival = Expando<int>('arrival');
+  int _arrivalCounter = 0;
+
+  int _arrivalOf(Object item) => _arrival[item] ?? 0;
+
+  /// Zone value set while a [runInTransaction] callback runs.
+  static final Object _transactionZoneKey = Object();
+
+  /// The transaction whose callback is running in the current zone, while
+  /// it is the active one on this connection.
+  ///
+  /// Throws when the connection died under that transaction: a query from
+  /// its callback ran outside the transaction, autocommitted on the
+  /// reconnected session.
+  TransactionContext? get _zoneTransaction {
+    final transaction = Zone.current[_transactionZoneKey];
+    if (transaction is TransactionContext &&
+        identical(transaction.connection, this)) {
+      if (transaction.terminalError != null) {
+        throw StateError('Transaction ${transaction.transactionId} failed: '
+            '${transaction.terminalError}');
+      }
+      if (transaction.isActive &&
+          identical(transaction, _currentTransaction)) {
+        return transaction;
+      }
+    }
+    return null;
+  }
+
+  /// With true (the default), a query issued on the connection (not on the
+  /// [TransactionContext]) while a [runInTransaction] callback of another
+  /// caller runs waits for it to commit or roll back; issued from the
+  /// callback itself (or from anything it starts), it runs in the
+  /// transaction. With false, the extended-protocol calls (`queryNamed`,
+  /// `queryUnnamed`, `queryMaps`, ...) fail with a [StateError] instead of
+  /// waiting, and so do simple-protocol calls (`execute`, `querySimple`),
+  /// which waited before.
+  ///
+  /// During a transaction opened with [beginTransaction], the
+  /// extended-protocol calls on the connection always fail: the caller
+  /// could be the transaction's owner, which would wait for itself.
+  bool queueConcurrentCalls = true;
+
   TimeZoneSettings timeZone = TimeZoneSettings('UTC');
 
   /// [textCharset] utf8 | latin1 | ascii
@@ -198,6 +246,7 @@ class CoreConnection implements ConnectionInterface {
     this.searchPath,
     this.sessionStatements = const <String>[],
     bool numericAsString = false,
+    this.queueConcurrentCalls = true,
   }) : _reconnectRandom = reconnectRandom ?? math.Random() {
     reconnectPolicy.validate();
     if (commandTimeout != null && commandTimeout! <= Duration.zero) {
@@ -244,6 +293,7 @@ class CoreConnection implements ConnectionInterface {
       searchPath: settings.searchPath,
       sessionStatements: settings.sessionStatements,
       numericAsString: settings.numericAsString,
+      queueConcurrentCalls: settings.queueConcurrentCalls,
     );
   }
 
@@ -804,7 +854,8 @@ class CoreConnection implements ConnectionInterface {
   Future<Results> executeStatement(Query query,
       {bool isDeallocate = false}) async {
     var stm = await executeStatementAsStream(query);
-    var result = stm.toResults();
+    // Awaited before DEALLOCATE: a failed execution left an unhandled error.
+    var result = await stm.toResults();
 
     if (isDeallocate == true) {
       await execute('DEALLOCATE ${query.statementName}');
@@ -825,8 +876,16 @@ class CoreConnection implements ConnectionInterface {
   }
 
   @override
-  Future<TransactionContext> beginTransaction() async {
-    var transaction = TransactionContext(_transactionId, this);
+  Future<TransactionContext> beginTransaction() => _beginTransaction(false);
+
+  Future<TransactionContext> _beginTransaction(bool runByCallback) async {
+    if (_zoneTransaction != null) {
+      // It would wait for the running transaction, which waits for it.
+      throw StateError('A transaction is already active in this callback; '
+          'use its TransactionContext.');
+    }
+    var transaction = TransactionContext(_transactionId, this)
+      ..runByCallback = runByCallback;
     final commandBegin = 'BEGIN';
     await _enqueueTransaction(transaction);
     await transaction.execute(commandBegin);
@@ -859,9 +918,12 @@ class CoreConnection implements ConnectionInterface {
   @override
   Future<T> runInTransaction<T>(
       Future<T> Function(TransactionContext ctx) operation) async {
-    final transa = await beginTransaction();
+    final transa = await _beginTransaction(true);
     try {
-      final result = await operation(transa);
+      // Queries issued on this connection from the callback belong to the
+      // transaction (see [queueConcurrentCalls]).
+      final result = await runZoned(() => operation(transa),
+          zoneValues: {_transactionZoneKey: transa});
       await commit(transa);
       return result;
     } catch (_) {
@@ -890,6 +952,7 @@ class CoreConnection implements ConnectionInterface {
             connectionName: connectionName);
       }
     }
+    _arrival[transaction] = ++_arrivalCounter;
     _transactionQueue.addLast(transaction);
     Timer.run(_processTransactionQueue);
   }
@@ -909,11 +972,28 @@ class CoreConnection implements ConnectionInterface {
     if (_sessionInitInFlight != null) {
       return;
     }
+    // Queries that arrived before this transaction run first; the
+    // ReadyForQuery of the last one schedules the transaction again.
+    if (_sendQueryQueue.isNotEmpty &&
+        _arrivalOf(_sendQueryQueue.first) <
+            _arrivalOf(_transactionQueue.first)) {
+      Timer.run(_processSendQueryQueue);
+      return;
+    }
     _currentTransaction = _transactionQueue.removeFirst();
     Timer.run(_processSendQueryQueue);
   }
 
-  Future<void> _enqueueQuery(Query query) async {
+  Future<void> _enqueueQuery(Query query, {int? arrival}) async {
+    final zoneTransaction = _zoneTransaction;
+    if (zoneTransaction != null) {
+      // Issued on the connection from the transaction's callback.
+      query.transactionContext = zoneTransaction;
+      zoneTransaction.sendQueryQueue.addLast(query);
+      scheduleQueuedQueries();
+      return;
+    }
+    _checkOutsideTransaction();
     if (_connectionState == ConnectionState.closed) {
       if (allowAttemptToReconnect) {
         await tryReconnect();
@@ -925,8 +1005,28 @@ class CoreConnection implements ConnectionInterface {
             serverErrorCode: lastServerNotice?.code);
       }
     }
+    final order = arrival ?? ++_arrivalCounter;
+    _arrival[query] = order;
+    // In arrival order: a query that waited for a statement preparation
+    // goes back to its place.
+    final later = <Query>[];
+    while (_sendQueryQueue.isNotEmpty &&
+        _arrivalOf(_sendQueryQueue.last) > order) {
+      later.add(_sendQueryQueue.removeLast());
+    }
     _sendQueryQueue.addLast(query);
+    _sendQueryQueue.addAll(later.reversed);
     Timer.run(_processSendQueryQueue);
+  }
+
+  /// A query on the connection (not on a [TransactionContext]) while a
+  /// transaction is active: see [queueConcurrentCalls].
+  void _checkOutsideTransaction({bool direct = false}) {
+    final current = _currentTransaction;
+    if (current == null) return;
+    if (queueConcurrentCalls && (current.runByCallback || !direct)) return;
+    throw StateError('A transaction is active; execute this query through its '
+        'TransactionContext.');
   }
 
   /// Reopens a recoverably disconnected connection using [reconnectPolicy].
@@ -1019,6 +1119,13 @@ class CoreConnection implements ConnectionInterface {
     if (queryQueue.isEmpty) {
       return;
     }
+    // A transaction that arrived before the next query starts first.
+    if (_currentTransaction == null &&
+        _transactionQueue.isNotEmpty &&
+        _arrivalOf(queryQueue.first) > _arrivalOf(_transactionQueue.first)) {
+      Timer.run(_processTransactionQueue);
+      return;
+    }
     if (_query != null) {
       return;
     }
@@ -1060,7 +1167,7 @@ class CoreConnection implements ConnectionInterface {
 
   dynamic _sendExecuteSimpleStatement(Query query) {
     if (_resetsServerStatementCache(query.getSql)) {
-      clearStatementCache(closeStatements: false);
+      clearStatementCache();
     }
     final writer = PgWriteBuffer();
     writer.startMessage(queryMessage);
@@ -1186,17 +1293,33 @@ class CoreConnection implements ConnectionInterface {
   /// complete codecs. [requireBinaryResults] requests binary for every cold
   /// result column and rejects schemas without complete binary codecs.
   Future<Query> executeDirect(
+          String sql, dynamic params, void Function(Query query) configure,
+          {TransactionContext? transaction,
+          PlaceholderIdentifier placeholderIdentifier =
+              PlaceholderIdentifier.pgDefault,
+          bool useCache = true,
+          bool requireBinaryResults = false}) =>
+      _executeDirect(sql, params, configure,
+          transaction: transaction,
+          placeholderIdentifier: placeholderIdentifier,
+          useCache: useCache,
+          requireBinaryResults: requireBinaryResults);
+
+  /// [arrival]: the place in the connection's queue, taken at the first call
+  /// so a query that waited for another caller's preparation of the same
+  /// statement keeps it.
+  Future<Query> _executeDirect(
       String sql, dynamic params, void Function(Query query) configure,
       {TransactionContext? transaction,
       PlaceholderIdentifier placeholderIdentifier =
           PlaceholderIdentifier.pgDefault,
       bool useCache = true,
-      bool requireBinaryResults = false}) async {
-    if (transaction == null && _currentTransaction != null) {
-      throw StateError(
-          'A transaction is active; execute this query through its '
-          'TransactionContext.');
-    }
+      bool requireBinaryResults = false,
+      int? arrival}) async {
+    // Issued on the connection from a runInTransaction callback.
+    transaction ??= _zoneTransaction;
+    if (transaction == null) _checkOutsideTransaction(direct: true);
+    arrival ??= ++_arrivalCounter;
     final suppliedParams = params ?? const <Object?>[];
     if ((placeholderIdentifier == PlaceholderIdentifier.pgDefault ||
             placeholderIdentifier == PlaceholderIdentifier.onlyQuestionMark) &&
@@ -1225,11 +1348,12 @@ class CoreConnection implements ConnectionInterface {
       final pending = _statementPreparations[preparationKey];
       if (pending != null) {
         await pending.future;
-        return executeDirect(sql, params, configure,
+        return _executeDirect(sql, params, configure,
             transaction: transaction,
             placeholderIdentifier: placeholderIdentifier,
             useCache: useCache,
-            requireBinaryResults: requireBinaryResults);
+            requireBinaryResults: requireBinaryResults,
+            arrival: arrival);
       }
     }
     late final Query query;
@@ -1266,13 +1390,13 @@ class CoreConnection implements ConnectionInterface {
       }
       final completed = query.completed;
       if (transaction == null) {
-        await _enqueueQuery(query);
+        await _enqueueQuery(query, arrival: arrival);
       } else {
         transaction.sendQueryQueue.addLast(query);
         Timer.run(_processSendQueryQueue);
       }
       await completed;
-      if (resetsCache) clearStatementCache(closeStatements: false);
+      if (resetsCache) clearStatementCache();
       if (!cacheHit &&
           cacheEnabled &&
           query.parseComplete &&
@@ -1318,11 +1442,16 @@ class CoreConnection implements ConnectionInterface {
     return query;
   }
 
-  bool _resetsServerStatementCache(String sql) {
-    final command = sql.trimLeft().toUpperCase();
-    return command.startsWith('DEALLOCATE ALL') ||
-        command.startsWith('DISCARD ALL');
-  }
+  /// Anywhere in the SQL: a simple query can run it after other statements,
+  /// and `DEALLOCATE PREPARE ALL` is the same command. Missed, the next
+  /// cached query failed with 26000. A match inside a literal only costs
+  /// the cache, which is cleared with Close (harmless after a real reset).
+  static final RegExp _resetsCachePattern = RegExp(
+      r'\b(DEALLOCATE\s+(PREPARE\s+)?ALL|DISCARD\s+ALL)\b',
+      caseSensitive: false);
+
+  bool _resetsServerStatementCache(String sql) =>
+      _resetsCachePattern.hasMatch(sql);
 
   void _storeStatement(String key, Query completedQuery) {
     final replaced = _statementCache.remove(key);
@@ -1411,6 +1540,9 @@ class CoreConnection implements ConnectionInterface {
     }
     final writer = PgWriteBuffer();
     final closeCount = _writePendingStatementCloses(writer);
+    // Any later Parse replaces the unnamed statement (an uncached query of
+    // any caller): Bind alone executed that other statement.
+    if (query.isUnamedStatement) _writeParse(writer, query);
     _writeBind(writer, query);
     _writeExecute(writer);
     _writeEmptyMessage(writer, syncMessage);
@@ -1741,7 +1873,28 @@ class CoreConnection implements ConnectionInterface {
       case notificationResponse:
         _handleNotificationResponse(messageBytes);
         break;
+      case copyInResponse:
+        _handleCopyInResponse();
+        break;
     }
+  }
+
+  /// `COPY ... FROM STDIN` waits for data that this driver has no API to
+  /// send: without an answer the command, and every caller queued behind it,
+  /// waited forever. CopyFail ends it with an error (SQLSTATE 57014). In
+  /// copy-in mode the server ignores the Sync already sent, so an
+  /// extended-protocol query needs another one to get its ReadyForQuery.
+  void _handleCopyInResponse() {
+    final writer = PgWriteBuffer();
+    writer.startMessage(copyFailMessage);
+    writer.writeBytes(typeConverter.charsetEncode(
+        'COPY FROM STDIN is not supported by dargres', textCharset));
+    writer.writeUint8(nullByte);
+    writer.endMessage();
+    if (_query?.queryType != QueryType.simple) {
+      _writeEmptyMessage(writer, syncMessage);
+    }
+    _sendBuffer(writer);
   }
 
   void _handleParseComplete(List<int> data) {
@@ -1963,6 +2116,18 @@ class CoreConnection implements ConnectionInterface {
     }
   }
 
+  /// NOTICE fields, notification payloads and ParameterStatus values. With
+  /// `textCharset: 'ascii'` the server keeps its own encoding: a non-ASCII
+  /// notice (any localized one) threw in the read loop and closed the
+  /// connection. ErrorResponse has the same fallback.
+  String _decodeServerText(List<int> bytes) {
+    try {
+      return typeConverter.charsetDecode(bytes, textCharset);
+    } on FormatException {
+      return utf8.decode(bytes, allowMalformed: true);
+    }
+  }
+
   void _handleNoticeResponse(List<int> data) {
     final map = <String, String>{};
     var offset = 0;
@@ -1970,8 +2135,7 @@ class CoreConnection implements ConnectionInterface {
       final key = String.fromCharCode(data[offset++]);
       final end = data.indexOf(nullByte, offset);
       if (end < 0) throw const FormatException('Unterminated NoticeResponse.');
-      map[key] =
-          typeConverter.charsetDecode(data.sublist(offset, end), textCharset);
+      map[key] = _decodeServerText(data.sublist(offset, end));
       offset = end + 1;
     }
     final msg = ServerNotice(false, map, connectionName);
@@ -1984,10 +2148,9 @@ class CoreConnection implements ConnectionInterface {
     var idx = 4;
     var nullIndex = data.indexOf(nullByte, idx);
 
-    var channel =
-        typeConverter.charsetDecode(data.sublist(idx, nullIndex), textCharset);
-    var payload = typeConverter.charsetDecode(
-        data.sublist(nullIndex + 1, data.length - 1), textCharset);
+    var channel = _decodeServerText(data.sublist(idx, nullIndex));
+    var payload =
+        _decodeServerText(data.sublist(nullIndex + 1, data.length - 1));
     _notifications.add(
         {'backendPid': backendPid, 'channel': channel, 'payload': payload});
   }
@@ -2118,8 +2281,7 @@ class CoreConnection implements ConnectionInterface {
     var pos = data.indexOf(nullByte);
     var key =
         typeConverter.charsetDecode(data.sublist(0, pos), defaultCodeCharset);
-    var value = typeConverter.charsetDecode(
-        data.sublist(pos + 1, data.length - 1), textCharset);
+    var value = _decodeServerText(data.sublist(pos + 1, data.length - 1));
     serverInfo.rawParams[key] = value;
 
     if (key == 'client_encoding' && value != 'UTF8') {
