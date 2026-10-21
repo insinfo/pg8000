@@ -8,15 +8,17 @@ on:
 
 jobs:
   test:
+    name: PostgreSQL ${{ matrix.postgres-version }} (Dart ${{ matrix.sdk }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         sdk: ['3.6.0', stable]
+        postgres-version: ['14', '15', '16', '17', '18']
 
     services:
       postgres:
-        image: postgres:17
+        image: postgres:${{ matrix.postgres-version }}
         env:
           POSTGRES_USER: dart
           POSTGRES_PASSWORD: dart
@@ -55,5 +57,5 @@ jobs:
       - name: Unit tests
         run: dart test test/unit
 
-      - name: Integration tests
+      - name: Integration tests on PostgreSQL ${{ matrix.postgres-version }}
         run: dart test test/integration --concurrency=1
