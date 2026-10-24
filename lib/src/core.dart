@@ -576,15 +576,21 @@ class CoreConnection implements ConnectionInterface {
       socket.add(const <int>[0, 0, 0, 8, 4, 210, 22, 47]);
       await socket.flush();
       answer = await response.future.timeout(connectionTimeout);
-    } finally {
+    } catch (_) {
       await subscription.cancel();
+      rethrow;
     }
     if (answer != statementTarget) {
+      await subscription.cancel();
       throw PostgresqlException(
         'This PostgreSQL server rejected SSL connections.',
         connectionName: connectionName,
       );
     }
+    // SecureSocket.secure takes the socket over; cancelling the subscription
+    // that read the answer would end the socket and fail the handshake, so
+    // it is only paused.
+    subscription.pause();
     return SecureSocket.secure(
       socket,
       context: sslContext!.context,
