@@ -910,10 +910,25 @@ class CoreConnection implements ConnectionInterface {
     Timer.run(_processTransactionQueue);
   }
 
+  /// Commits [transaction].
+  ///
+  /// Throws a [PostgresqlException] (SQLSTATE 25P02) when an error aborted
+  /// the transaction ([transactionState] is [TransactionState.error]) and no
+  /// ROLLBACK TO SAVEPOINT recovered from it: the server would answer the
+  /// COMMIT with a ROLLBACK, not with an error, so the caller would take the
+  /// rolled back writes for saved. It is rolled back.
   @override
   Future<void> commit(TransactionContext transaction) async {
     if (!identical(transaction, _currentTransaction)) {
       throw StateError('Cannot commit a transaction that is not active.');
+    }
+    if (transactionState == TransactionState.error) {
+      await rollBack(transaction);
+      throw PostgresqlException(
+          'The transaction was aborted by an earlier error and was rolled '
+          'back instead of committed.',
+          serverErrorCode: '25P02',
+          connectionName: connectionName);
     }
     await transaction.execute('COMMIT');
     transaction.markCompleted();

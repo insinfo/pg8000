@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.0.3
+
+### Fixed
+
+- `commit` (and so `runInTransaction`) of a transaction an error aborted
+  completed without an error: PostgreSQL answers that COMMIT with a
+  ROLLBACK, so a caller that caught the error took the rolled back writes
+  for saved. It now rolls back and throws a `PostgresqlException` with
+  `serverErrorCode` `25P02`; after a `ROLLBACK TO SAVEPOINT` the
+  transaction commits as before.
+
 ## 4.0.2
 
 ### Fixed

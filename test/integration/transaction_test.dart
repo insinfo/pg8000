@@ -73,4 +73,69 @@ void main() {
       expect(pids[0], isNot(pids[1]));
     });
   });
+
+  group('a transaction an error aborted', () {
+    // PostgreSQL answers the COMMIT of an aborted transaction with a
+    // ROLLBACK, not with an error: commit must throw.
+    late CoreConnection connection;
+
+    setUp(() async {
+      connection = CoreConnection.fromSettings(_settings());
+      await connection.connect();
+      await connection
+          .execute('CREATE TEMP TABLE aborted_commit (id int primary key)');
+    });
+
+    tearDown(() => connection.close());
+
+    Future<int> count() async => (await connection.queryNamed(
+            'SELECT count(*)::int AS n FROM aborted_commit', const <Object?>[]))
+        .first[0] as int;
+
+    test('a caught error makes the commit throw 25P02 and roll back', () async {
+      await expectLater(connection.runInTransaction((tx) async {
+        await tx.execute('INSERT INTO aborted_commit VALUES (1)');
+        try {
+          await tx.execute('INSERT INTO aborted_commit VALUES (1)');
+        } catch (_) {}
+      }),
+          throwsA(isA<PostgresqlException>()
+              .having((e) => e.serverErrorCode, 'serverErrorCode', '25P02')));
+      expect(await count(), 0);
+      expect('${connection.transactionState}', 'none');
+    });
+
+    test('a ROLLBACK TO SAVEPOINT recovers: the commit keeps the writes',
+        () async {
+      await connection.runInTransaction((tx) async {
+        await tx.execute('INSERT INTO aborted_commit VALUES (1)');
+        await tx.execute('SAVEPOINT sp');
+        try {
+          await tx.execute('INSERT INTO aborted_commit VALUES (1)');
+        } catch (_) {}
+        await tx.execute('ROLLBACK TO SAVEPOINT sp');
+        await tx.execute('INSERT INTO aborted_commit VALUES (2)');
+      });
+      expect(await count(), 2);
+    });
+
+    test('the same in a pool transaction', () async {
+      final pool = PostgreSqlPool(1, _settings());
+      addTearDown(pool.close);
+      await pool.execute(
+          'CREATE TABLE IF NOT EXISTS dargres_aborted_commit (id int primary key)');
+      addTearDown(() => pool.execute('DROP TABLE dargres_aborted_commit'));
+      await pool.execute('TRUNCATE dargres_aborted_commit');
+      await expectLater(pool.runInTransaction((tx) async {
+        await tx.execute('INSERT INTO dargres_aborted_commit VALUES (1)');
+        try {
+          await tx.execute('INSERT INTO dargres_aborted_commit VALUES (1)');
+        } catch (_) {}
+      }), throwsA(isA<PostgresqlException>()));
+      final rows = await pool.queryNamed(
+          'SELECT count(*)::int FROM dargres_aborted_commit',
+          const <Object?>[]);
+      expect(rows.first[0], 0);
+    });
+  });
 }
