@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.0.2
+
+### Fixed
+
+- TLS (`sslContext`, `requireSsl`) failed on every connection with
+  `HandshakeException: Connection terminated during handshake`: the
+  subscription that read the answer to the SSLRequest was cancelled before
+  the socket was handed to `SecureSocket.secure`, which ended the socket.
+  It is paused instead, as postgres 3.x does.
+
 ## 4.0.1
 
 Details: [doc/release_notes_4.0.1.md](doc/release_notes_4.0.1.md).
