@@ -459,9 +459,11 @@ class CoreConnection implements ConnectionInterface {
         openedSocket.destroy();
         superseded = true;
       } else {
+        _observeDone(openedSocket);
         _openingSocket = openedSocket;
         if (sslContext != null) {
           openedSocket = await _connectSsl(openedSocket);
+          _observeDone(openedSocket);
           _openingSocket = openedSocket;
         }
         if (!_isCurrentLifecycle(lifecycleGeneration)) {
@@ -716,6 +718,7 @@ class CoreConnection implements ConnectionInterface {
       // The command may have completed while the cancel socket was opening.
       // In that case, never send a packet that could cancel the next command.
       if (!identical(_query, query) || _terminallyClosed) return false;
+      _observeDone(cancelSocket);
       cancelSocket.add(cancelRequestBytes(processId, secretKey));
       await cancelSocket.flush().timeout(connectionTimeout);
       return true;
@@ -2592,3 +2595,9 @@ class _SocketWriteException extends PostgresqlException {
       : super(errorCode: cause);
 }
 
+/// Errors of a write to a socket the server reset go to its `done` future; with
+/// nobody listening they are uncaught errors, which end a process by default.
+/// The command already fails through the read side of the socket.
+void _observeDone(Socket socket) {
+  socket.done.then<void>((_) {}, onError: (Object _) {});
+}
