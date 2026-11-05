@@ -86,6 +86,13 @@ class ConnectionSettings {
   bool isUnixSocket = false;
   SslContext? sslContext;
 
+  /// Whether the password may be sent in clear text when the server asks for
+  /// it with no verified TLS (false by default). Whoever asks gets the password
+  /// itself, so without an [SslContext] that verifies the certificate that may
+  /// be anyone between the client and the server. Servers that authenticate
+  /// with LDAP, PAM or `password` ask for it.
+  bool allowCleartextPassword;
+
   Duration connectionTimeout = const Duration(seconds: 180);
 
   /// Maximum time a command may remain active on the server. When it expires,
@@ -133,6 +140,7 @@ class ConnectionSettings {
     this.sourceAddress = '',
     this.isUnixSocket = false,
     this.sslContext,
+    this.allowCleartextPassword = false,
     this.connectionTimeout = const Duration(seconds: 180),
     this.commandTimeout,
     this.cancelGracePeriod = const Duration(seconds: 5),
@@ -175,6 +183,7 @@ class ConnectionSettings {
       sourceAddress: sourceAddress,
       isUnixSocket: isUnixSocket,
       sslContext: sslContext,
+      allowCleartextPassword: allowCleartextPassword,
       connectionTimeout: connectionTimeout,
       commandTimeout: commandTimeout,
       cancelGracePeriod: cancelGracePeriod,

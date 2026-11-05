@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.1.0
+
+### Security
+
+- Breaking: the password is no longer sent in clear text when the server asks
+  for it with no verified TLS: whoever asks gets the password itself, so without
+  an `SslContext` that verifies the certificate that could be anyone between the
+  client and the server. `connect()` fails with a `PostgresqlException`. Servers
+  that authenticate with LDAP, PAM or `password`: use an `SslContext` that
+  verifies the certificate, or set `ConnectionSettings.allowCleartextPassword`.
+
 ## 4.0.3
 
 ### Fixed

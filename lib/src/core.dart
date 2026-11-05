@@ -46,6 +46,10 @@ class CoreConnection implements ConnectionInterface {
   bool isUnixSocket = false;
   SslContext? sslContext;
 
+  /// Whether the password may be sent in clear text when the server asks for
+  /// it with no verified TLS.
+  bool allowCleartextPassword;
+
   bool tcpKeepalive;
 
   /// PostgreSQL versions older than 8.2 do not support `application_name`.
@@ -230,6 +234,7 @@ class CoreConnection implements ConnectionInterface {
     this.sourceAddress = '',
     this.isUnixSocket = false,
     this.sslContext,
+    this.allowCleartextPassword = false,
     this.connectionTimeout = const Duration(seconds: 180),
     this.commandTimeout,
     this.cancelGracePeriod = const Duration(seconds: 5),
@@ -278,6 +283,7 @@ class CoreConnection implements ConnectionInterface {
       sourceAddress: settings.sourceAddress,
       isUnixSocket: settings.isUnixSocket,
       sslContext: settings.sslContext,
+      allowCleartextPassword: settings.allowCleartextPassword,
       connectionTimeout: settings.connectionTimeout,
       commandTimeout: settings.commandTimeout,
       cancelGracePeriod: settings.cancelGracePeriod,
@@ -2195,6 +2201,18 @@ class CoreConnection implements ConnectionInterface {
       if (password == null) {
         throw PostgresqlException(
             'server requesting cleartext password authentication, but no password was provided',
+            connectionName: connectionName);
+      }
+      // Whoever asks for it gets the password itself: with no verified TLS
+      // that may be anyone between the client and the server.
+      final verifiedTls =
+          sslContext != null && sslContext!.onBadCertificate == null;
+      if (!allowCleartextPassword && !verifiedTls) {
+        throw PostgresqlException(
+            'the server asked for the password in clear text, and it was not '
+            'sent. Use an SslContext that verifies the certificate, or set '
+            'allowCleartextPassword if the server requires it (LDAP, PAM, '
+            'password)',
             connectionName: connectionName);
       }
       _sendMessage(passwordMessage, [...passwordBytes, nullByte]);
